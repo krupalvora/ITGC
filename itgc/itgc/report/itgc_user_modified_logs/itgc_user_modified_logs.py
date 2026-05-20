@@ -1,0 +1,52 @@
+import frappe
+from frappe import _
+
+# Whitelist: filter value (shown in UI) -> safe SQL column reference.
+# Kept here so the column name interpolation below is provably safe.
+DATE_FIELDS = {'User Modified': 'u.modified', 'User Created': 'u.creation', 'Version Modified': 'v.modified', 'Version Created': 'v.creation'}
+DEFAULT_DATE_FIELD = 'User Modified'
+
+
+def execute(filters=None):
+	filters = frappe._dict(filters or {})
+	date_field = filters.get("date_field") or DEFAULT_DATE_FIELD
+	if date_field not in DATE_FIELDS:
+		frappe.throw(_("Invalid date field: {0}").format(date_field))
+	if not filters.get("from_date") or not filters.get("to_date"):
+		frappe.throw(_("From Date and To Date are required"))
+
+	date_sql = DATE_FIELDS[date_field]
+	date_filter = f"{date_sql} BETWEEN %(from_date)s AND %(to_date)s"
+
+	query = """
+			SELECT
+				1 AS cnt,
+				u.name AS id,
+				u.email,
+				u.username,
+				u.full_name,
+				u.modified AS modified_on,
+				u.modified_by AS modified_by,
+				v.docname,
+				v.data
+			FROM `tabUser` AS u
+			INNER JOIN `tabVersion` AS v ON v.docname = u.name
+			WHERE v.ref_doctype = 'User'
+			  AND u.modified != u.creation
+			  AND {date_filter}
+			  AND v.modified_by IN (
+				  SELECT T1.name FROM `tabUser` T1
+				  JOIN `tabHas Role` T2 ON T1.name = T2.parent
+				  WHERE T2.role != 'System Manager'
+			  )
+			  AND v.data NOT LIKE '%%reset_password_key%%'
+			  AND v.data NOT LIKE '%%new_password%%'
+			  AND v.data NOT LIKE '%%last_password_reset_date%%'
+			ORDER BY v.modified DESC
+		""".format(date_filter=date_filter)
+	data = frappe.db.sql(query, filters, as_dict=True)
+	return get_columns(), data
+
+
+def get_columns():
+	return [{'fieldname': 'cnt', 'label': 'Count', 'fieldtype': 'Int', 'width': 80}, {'fieldname': 'id', 'label': 'User', 'fieldtype': 'Link', 'options': 'User', 'width': 240}, {'fieldname': 'email', 'label': 'Email', 'fieldtype': 'Data', 'width': 220}, {'fieldname': 'username', 'label': 'Username', 'fieldtype': 'Data', 'width': 160}, {'fieldname': 'full_name', 'label': 'Full Name', 'fieldtype': 'Data', 'width': 200}, {'fieldname': 'modified_on', 'label': 'User Modified On', 'fieldtype': 'Datetime', 'width': 170}, {'fieldname': 'modified_by', 'label': 'Modified By', 'fieldtype': 'Link', 'options': 'User', 'width': 200}, {'fieldname': 'docname', 'label': 'Doc Name', 'fieldtype': 'Data', 'width': 220}, {'fieldname': 'data', 'label': 'Data', 'fieldtype': 'Code', 'width': 400}]
