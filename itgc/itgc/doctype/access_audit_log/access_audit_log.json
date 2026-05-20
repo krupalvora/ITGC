@@ -1,0 +1,145 @@
+{
+ "actions": [],
+ "allow_copy": 1,
+ "autoname": "autoincrement",
+ "creation": "2025-11-24 23:18:09.639662",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "target_user",
+  "approver",
+  "updated_by",
+  "column_break_sclb",
+  "status",
+  "request_id",
+  "reference_doctype",
+  "reference_doctype_name",
+  "activity_type",
+  "section_break_wtlo",
+  "new_roles",
+  "previous_roles",
+  "section_break_tfvu",
+  "new_role_permission",
+  "old_role_permission"
+ ],
+ "fields": [
+  {
+   "fieldname": "target_user",
+   "fieldtype": "Link",
+   "label": "Target User",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "approver",
+   "fieldtype": "Link",
+   "label": "Approver",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_sclb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Data",
+   "label": "Status",
+   "read_only": 1
+  },
+  {
+   "fieldname": "request_id",
+   "fieldtype": "Link",
+   "label": "Request ID",
+   "options": "Access Request",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_wtlo",
+   "fieldtype": "Section Break",
+   "hide_border": 1
+  },
+  {
+   "fieldname": "new_roles",
+   "fieldtype": "Small Text",
+   "label": "New Roles",
+   "read_only": 1
+  },
+  {
+   "fieldname": "previous_roles",
+   "fieldtype": "Small Text",
+   "label": "Previous Roles",
+   "read_only": 1
+  },
+  {
+   "fieldname": "updated_by",
+   "fieldtype": "Link",
+   "label": "Upated By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reference_doctype",
+   "fieldtype": "Data",
+   "label": "Reference Doctype"
+  },
+  {
+   "fieldname": "reference_doctype_name",
+   "fieldtype": "Data",
+   "label": "Reference Doctype Name"
+  },
+  {
+   "fieldname": "section_break_tfvu",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "new_role_permission",
+   "fieldtype": "Table",
+   "label": "New Role Permission",
+   "options": "docperm log",
+   "read_only": 1
+  },
+  {
+   "fieldname": "old_role_permission",
+   "fieldtype": "Table",
+   "label": "Old Role Permission",
+   "options": "docperm log",
+   "read_only": 1
+  },
+  {
+   "fieldname": "activity_type",
+   "fieldtype": "Data",
+   "label": "Activity Type"
+  }
+ ],
+ "grid_page_length": 50,
+ "in_create": 1,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-11-27 21:32:32.808762",
+ "modified_by": "Administrator",
+ "module": "ITGC",
+ "name": "Access Audit Log",
+ "naming_rule": "Autoincrement",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,0 +1,52 @@
+{
+ "actions": [],
+ "creation": "2026-05-20 11:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enforcement_section",
+  "enable_access_request_enforcement",
+  "enforcement_help"
+ ],
+ "fields": [
+  {
+   "fieldname": "enforcement_section",
+   "fieldtype": "Section Break",
+   "label": "Access Request Enforcement"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_access_request_enforcement",
+   "fieldtype": "Check",
+   "label": "Enable Access Request Enforcement"
+  },
+  {
+   "fieldname": "enforcement_help",
+   "fieldtype": "HTML",
+   "options": "<p>When enabled, direct edits to <b>User</b> (roles, role profile, module profile, blocked modules) and <b>Role Profile</b> are blocked. Changes must flow through an approved <b>Access Request</b>. Reports are not affected by this flag.</p>"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-20 11:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "ITGC",
+ "name": "ITGC Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -1,4 +1,4 @@
-// Originally authored by New Indictrans Tech Pvt Ltd (2025).
+// Originally authored by Krupal Vora (2025).
 // Migrated to the ITGC app.
 
 frappe.query_reports["Audit Trail - SM20"] = {

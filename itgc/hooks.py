@@ -5,6 +5,16 @@ app_description = "Information Technology General Controls"
 app_email = "krupalvora789@gmail.com"
 app_license = "mit"
 
+# Fixtures
+# --------
+# Custom Field on User added for Access Request flow.
+fixtures = [
+	{
+		"dt": "Custom Field",
+		"filters": [["name", "in", ["User-custom_reporting_manager"]]],
+	},
+]
+
 # Apps
 # ------------------
 
@@ -82,8 +92,7 @@ app_license = "mit"
 # Installation
 # ------------
 
-# before_install = "itgc.install.before_install"
-# after_install = "itgc.install.after_install"
+after_install = "itgc.install.after_install"
 
 # Uninstallation
 # ------------
@@ -137,13 +146,14 @@ app_license = "mit"
 # ---------------
 # Hook on document methods and events
 
-# doc_events = {
-# 	"*": {
-# 		"on_update": "method",
-# 		"on_cancel": "method",
-# 		"on_trash": "method"
-# 	}
-# }
+doc_events = {
+	"User": {
+		"validate": "itgc.api.user.validate",
+	},
+	"Role Profile": {
+		"validate": "itgc.api.role_profile.validate",
+	},
+}
 
 # Scheduled Tasks
 # ---------------
@@ -173,10 +183,13 @@ app_license = "mit"
 
 # Overriding Methods
 # ------------------------------
-#
-# override_whitelisted_methods = {
-# 	"frappe.desk.doctype.event.event.get_events": "itgc.event.get_events"
-# }
+
+override_whitelisted_methods = {
+	"frappe.core.page.permission_manager.permission_manager.update": "itgc.api.permission_manager.update_permission_with_logging",
+	"frappe.core.page.permission_manager.permission_manager.add": "itgc.api.permission_manager.add_permission_with_logging",
+	"frappe.core.page.permission_manager.permission_manager.remove": "itgc.api.permission_manager.remove_permission_with_logging",
+	"frappe.core.page.permission_manager.permission_manager.reset": "itgc.api.permission_manager.reset_permission_with_logging",
+}
 #
 # each overriding function accepts a `data` argument;
 # generated from the base implementation of the doctype dashboard,
