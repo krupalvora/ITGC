@@ -15,7 +15,7 @@
  "module": "ITGC",
  "name": "ITGC-Disable-User-Activity",
  "owner": "Administrator",
- "prepared_report": 0,
+ "prepared_report": 1,
  "query": "",
  "ref_doctype": "Access Log",
  "report_name": "ITGC-Disable-User-Activity",

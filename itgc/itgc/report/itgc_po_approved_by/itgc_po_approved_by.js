@@ -1,18 +1,18 @@
-frappe.query_reports['ITGC-PO Approved_By'] = {
+frappe.query_reports["ITGC-PO Approved_By"] = {
 	filters: [
 		{
 			fieldname: "date_field",
 			label: __("Date Field"),
 			fieldtype: "Select",
 			options: "PO Created\nPO Transaction Date\nPO Modified\nVersion Modified",
-			default: 'PO Created',
+			default: "PO Created",
 			reqd: 1,
 		},
 		{
 			fieldname: "from_date",
 			label: __("From Date"),
 			fieldtype: "Date",
-			default: frappe.datetime.add_months(frappe.datetime.get_today(), -12),
+			default: frappe.datetime.add_months(frappe.datetime.get_today(), -1),
 			reqd: 1,
 		},
 		{
@@ -21,6 +21,13 @@ frappe.query_reports['ITGC-PO Approved_By'] = {
 			fieldtype: "Date",
 			default: frappe.datetime.get_today(),
 			reqd: 1,
+		},
+		{
+			fieldname: "workflow_state_keyword",
+			label: __("Workflow State Keyword"),
+			fieldtype: "Data",
+			default: "Complete",
+			description: __("Matched against the version data via LIKE. Leave empty to skip."),
 		},
 	],
 };

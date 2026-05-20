@@ -15,7 +15,7 @@
  "module": "ITGC",
  "name": "ITGC-User Logged In",
  "owner": "Administrator",
- "prepared_report": 0,
+ "prepared_report": 1,
  "query": "",
  "ref_doctype": "User",
  "report_name": "ITGC-User Logged In",

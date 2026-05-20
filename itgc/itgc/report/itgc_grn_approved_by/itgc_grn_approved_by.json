@@ -15,7 +15,7 @@
  "module": "ITGC",
  "name": "ITGC-GRN Approved_By",
  "owner": "Administrator",
- "prepared_report": 0,
+ "prepared_report": 1,
  "query": "",
  "ref_doctype": "Purchase Receipt",
  "report_name": "ITGC-GRN Approved_By",
