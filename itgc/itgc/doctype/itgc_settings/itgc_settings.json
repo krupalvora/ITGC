@@ -4,31 +4,38 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "enforcement_section",
-  "enable_access_request_enforcement",
-  "enforcement_help"
+  "manage_change_api_section",
+  "protect_manage_change_status_endpoint",
+  "manage_change_status_endpoint_token",
+  "manage_change_api_help"
  ],
  "fields": [
   {
-   "fieldname": "enforcement_section",
+   "fieldname": "manage_change_api_section",
    "fieldtype": "Section Break",
-   "label": "Access Request Enforcement"
+   "label": "Manage Change Approval API"
   },
   {
-   "default": "1",
-   "fieldname": "enable_access_request_enforcement",
+   "default": "0",
+   "fieldname": "protect_manage_change_status_endpoint",
    "fieldtype": "Check",
-   "label": "Enable Access Request Enforcement"
+   "label": "Require Token for Manage Change Status API"
   },
   {
-   "fieldname": "enforcement_help",
+   "depends_on": "eval:doc.protect_manage_change_status_endpoint",
+   "fieldname": "manage_change_status_endpoint_token",
+   "fieldtype": "Password",
+   "label": "Manage Change Status API Token"
+  },
+  {
+   "fieldname": "manage_change_api_help",
    "fieldtype": "HTML",
-   "options": "<p>When enabled, direct edits to <b>User</b> (roles, role profile, module profile, blocked modules) and <b>Role Profile</b> are blocked. Changes must flow through an approved <b>Access Request</b>. Reports are not affected by this flag.</p>"
+   "options": "<p>Used by the GitHub Actions merge gate. Endpoint: <code>itgc.api.manage_change_gate.check_pr_approval</code>. When the flag above is enabled, callers must send the token in the <code>X-ITGC-Token</code> header; otherwise the endpoint is public (read-only — it only reveals approval state for a given PR URL + branch).</p>"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-05-20 11:30:00.000000",
+ "modified": "2026-05-30 16:30:00.000000",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "ITGC Settings",

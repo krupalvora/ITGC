@@ -1,0 +1,147 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-30 14:51:39.653574",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "section_break_pggi",
+  "approver",
+  "column_break_mpne",
+  "department",
+  "version_control_section",
+  "version_control_url",
+  "column_break_ubeq",
+  "branch",
+  "project_managment_section",
+  "change_type",
+  "column_break_baic",
+  "ticket_id",
+  "column_break_oyei",
+  "ticket",
+  "description_section",
+  "description",
+  "amended_from"
+ ],
+ "fields": [
+  {
+   "fieldname": "section_break_pggi",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "branch",
+   "fieldtype": "Link",
+   "label": "Branch",
+   "link_filters": "[[\"Manage Change VC Branch\",\"is_default\",\"=\",1]]",
+   "options": "Manage Change VC Branch"
+  },
+  {
+   "description": "PR which needs to be merged with default branch",
+   "fieldname": "version_control_url",
+   "fieldtype": "Data",
+   "label": "Version Control URL"
+  },
+  {
+   "fetch_from": "department.hod",
+   "fieldname": "approver",
+   "fieldtype": "Link",
+   "label": "Approver",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "change_type",
+   "fieldtype": "Link",
+   "label": "Change Type",
+   "options": "Manage Change Type"
+  },
+  {
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Manage Change Department"
+  },
+  {
+   "fieldname": "ticket",
+   "fieldtype": "Data",
+   "label": "Ticket"
+  },
+  {
+   "fieldname": "ticket_id",
+   "fieldtype": "Data",
+   "label": "Ticket ID"
+  },
+  {
+   "fieldname": "project_managment_section",
+   "fieldtype": "Section Break",
+   "label": "Project Managment"
+  },
+  {
+   "fieldname": "version_control_section",
+   "fieldtype": "Section Break",
+   "label": "Version Control"
+  },
+  {
+   "fieldname": "description_section",
+   "fieldtype": "Section Break",
+   "label": "Description"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "column_break_mpne",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_ubeq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_baic",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "column_break_oyei",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "amended_from",
+   "fieldtype": "Link",
+   "label": "Amended From",
+   "no_copy": 1,
+   "options": "Manage Change",
+   "print_hide": 1,
+   "read_only": 1,
+   "search_index": 1
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-05-30 15:26:56.082885",
+ "modified_by": "Administrator",
+ "module": "ITGC",
+ "name": "Manage Change",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "submit": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}
