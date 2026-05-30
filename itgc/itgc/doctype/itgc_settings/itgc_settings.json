@@ -15,7 +15,7 @@
    "label": "Access Request Enforcement"
   },
   {
-   "default": "0",
+   "default": "1",
    "fieldname": "enable_access_request_enforcement",
    "fieldtype": "Check",
    "label": "Enable Access Request Enforcement"

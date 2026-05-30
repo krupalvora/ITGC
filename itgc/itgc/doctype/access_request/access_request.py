@@ -41,6 +41,7 @@ class AccessRequest(Document):
 					"An approver is required before raising this request."
 				)
 		self._enforce_approver_role()
+		self._enforce_docperm_changes_role()
 
 	def _enforce_approver_role(self):
 		# Defensive: workflow already gates the Approve/Reject buttons, but a direct
@@ -57,6 +58,18 @@ class AccessRequest(Document):
 				f"Only users with the {APPROVER_ROLE!r} role can {verb} access requests.",
 				title="Permission Denied",
 			)
+
+	def _enforce_docperm_changes_role(self):
+		# Mirrors the UI gating: only System Managers can submit a request that
+		# includes raw Custom DocPerm changes.
+		if not self.docperm_changes:
+			return
+		if "System Manager" in frappe.get_roles(frappe.session.user):
+			return
+		frappe.throw(
+			"Only System Managers can include DocType Permission Changes in an Access Request.",
+			title="Permission Denied",
+		)
 
 	def on_update(self):
 		if self.status == STATUS_APPROVED and not self.applied_at:

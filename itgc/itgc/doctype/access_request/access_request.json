@@ -14,11 +14,10 @@
   "status_section",
   "status",
   "decided_at",
+  "justification",
   "column_break_status",
   "applied_at",
   "decision_remarks",
-  "justification_section",
-  "justification",
   "role_profile_section",
   "role_profile",
   "roles_section",
@@ -114,11 +113,6 @@
    "no_copy": 1
   },
   {
-   "fieldname": "justification_section",
-   "fieldtype": "Section Break",
-   "label": "Justification"
-  },
-  {
    "fieldname": "justification",
    "fieldtype": "Small Text",
    "label": "Justification",
@@ -126,13 +120,12 @@
   },
   {
    "collapsible": 1,
-   "depends_on": "eval:doc.request_type == \"New User\" || doc.role_profile",
    "fieldname": "role_profile_section",
    "fieldtype": "Section Break",
    "label": "Role Profile"
   },
   {
-   "description": "Set to assign or change the target user's Role Profile.",
+   "description": "Assign or change the target user's Role Profile. This is the preferred channel for role changes — under ITGC enforcement, ad-hoc role grants via the Roles table will fail.",
    "fieldname": "role_profile",
    "fieldtype": "Link",
    "label": "Assign Role Profile",
@@ -146,7 +139,7 @@
    "label": "Roles"
   },
   {
-   "description": "Roles to add or remove. Note: when ITGC enforcement is on, role assignment must go through a Role Profile — ad-hoc role grants here will fail on apply. Use the Role Profile section instead.",
+   "description": "Roles to add (Additional Access) or remove (Remove Access).",
    "fieldname": "requested_roles",
    "fieldtype": "Table MultiSelect",
    "label": "Roles",
@@ -167,12 +160,14 @@
   },
   {
    "collapsible": 1,
+   "depends_on": "eval:frappe.user.has_role('System Manager')",
    "fieldname": "doc_permissions_section",
    "fieldtype": "Section Break",
    "label": "DocType Permission Changes (Advanced)"
   },
   {
-   "description": "Optional. Tweak Custom DocPerm rows. Use sparingly.",
+   "depends_on": "eval:frappe.user.has_role('System Manager')",
+   "description": "Optional. Tweak Custom DocPerm rows. Use sparingly. System Manager only.",
    "fieldname": "docperm_changes",
    "fieldtype": "Table",
    "label": "DocPerm Rows",
@@ -191,10 +186,9 @@
    "options": "User Permission Table"
   }
  ],
- "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-20 11:45:00.000000",
+ "modified": "2026-05-20 18:10:17.301752",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Access Request",
@@ -225,7 +219,6 @@
    "write": 1
   }
  ],
- "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

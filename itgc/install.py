@@ -16,6 +16,7 @@ def after_install():
 	_ensure_role()
 	_grant_to_administrator()
 	_attach_role_to_workflow()
+	_enable_enforcement_default()
 
 
 def _ensure_role():
@@ -53,3 +54,19 @@ def _attach_role_to_workflow():
 			changed = True
 	if changed:
 		wf.save(ignore_permissions=True)
+
+
+def _enable_enforcement_default():
+	"""Turn on the ITGC Settings flag on first install.
+
+	Existing benches that already have ITGC Settings persisted are left as-is so
+	a deliberate flip-off survives upgrades. Only seeds the default when the
+	single record has never been touched (no row in tabSingles yet).
+	"""
+	already_set = frappe.db.exists(
+		"Singles",
+		{"doctype": "ITGC Settings", "field": "enable_access_request_enforcement"},
+	)
+	if already_set:
+		return
+	frappe.db.set_single_value("ITGC Settings", "enable_access_request_enforcement", 1)

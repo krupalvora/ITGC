@@ -102,17 +102,42 @@ def _enforce_role_profile_only(doc):
 
 
 @frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
 def get_guest_user_list(doctype, txt, searchfield, start, page_len, filters):
-	"""Search query for Access Request: list of Website Users (excluding Guest)."""
-	filters = {"user_type": "Website User", "name": ["!=", "Guest"]}
-	if txt:
-		filters["name"] = ["like", f"%{txt}%"]
-
-	users = frappe.db.get_all(
-		"User",
-		filters=filters,
-		fields=["name", "full_name"],
-		limit_start=start,
-		limit_page_length=page_len,
+	"""Website Users only (used for the 'New User' Access Request flow)."""
+	return frappe.db.sql(
+		"""
+		SELECT name, full_name
+		FROM `tabUser`
+		WHERE user_type = 'Website User'
+		  AND name != 'Guest'
+		  AND name LIKE %(txt)s
+		ORDER BY name
+		LIMIT %(page_len)s OFFSET %(start)s
+		""",
+		{"txt": f"%{txt or ''}%", "page_len": page_len, "start": start},
 	)
-	return [(u.name, u.full_name) for u in users]
+
+
+@frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def search_target_user(doctype, txt, searchfield, start, page_len, filters):
+	"""Default Target User search for Access Request.
+
+	Frappe's built-in user_query excludes Website Users for non-Administrators, so a
+	freshly self-signed-up account never appears in the standard Link picker. This
+	query intentionally includes both System and Website Users; new sign-ups (often
+	Website Users awaiting role assignment) are exactly who Access Requests target.
+	"""
+	return frappe.db.sql(
+		"""
+		SELECT name, full_name, user_type
+		FROM `tabUser`
+		WHERE enabled = 1
+		  AND name NOT IN ('Guest', 'Administrator')
+		  AND name LIKE %(txt)s
+		ORDER BY user_type DESC, name
+		LIMIT %(page_len)s OFFSET %(start)s
+		""",
+		{"txt": f"%{txt or ''}%", "page_len": page_len, "start": start},
+	)
