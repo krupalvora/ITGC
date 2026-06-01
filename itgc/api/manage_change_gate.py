@@ -32,10 +32,15 @@ def check_pr_approval(pr_url=None, target_branch=None):
 			frappe.local.response["http_status_code"] = 400
 			return {"approved": False, "reason": "missing_parameters"}
 
+		has_workflow_state = frappe.get_meta("Manage Change").has_field("workflow_state")
+		fields = ["name", "docstatus", "approver", "ticket_id"]
+		if has_workflow_state:
+			fields.append("workflow_state")
+
 		rows = frappe.get_all(
 			"Manage Change",
 			filters={"version_control_url": pr_url, "branch": target_branch},
-			fields=["name", "docstatus", "workflow_state", "approver", "ticket_id"],
+			fields=fields,
 			order_by="modified desc",
 			limit=1,
 			ignore_permissions=True,
@@ -57,7 +62,7 @@ def check_pr_approval(pr_url=None, target_branch=None):
 			"name": mc.name,
 			"ticket_id": mc.ticket_id,
 			"approver": mc.approver,
-			"workflow_state": mc.workflow_state,
+			"workflow_state": mc.get("workflow_state"),
 			"docstatus": mc.docstatus,
 			"pr_url": pr_url,
 			"target_branch": target_branch,
