@@ -13,6 +13,7 @@
   "version_control_url",
   "column_break_ubeq",
   "branch",
+  "erp_app",
   "project_managment_section",
   "change_type",
   "column_break_baic",
@@ -39,6 +40,7 @@
   },
   {
    "allow_on_submit": 1,
+   "default": "Not Set",
    "description": "PR which needs to be merged with default branch. Can be filled after the Manage Change is submitted (e.g., after raising the PR).",
    "fieldname": "version_control_url",
    "fieldtype": "Data",
@@ -124,12 +126,18 @@
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
+  },
+  {
+   "fieldname": "erp_app",
+   "fieldtype": "Select",
+   "label": "ERP App",
+   "reqd": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-02 16:19:01.751093",
+ "modified": "2026-06-03 16:19:56.854747",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Change",
@@ -151,5 +159,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }
