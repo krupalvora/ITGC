@@ -15,8 +15,9 @@ REQUIRED_WORKFLOW_FILES = (
 )
 
 # Canonical source for the workflow files — where devs should copy them from
-# when onboarding a new app to the Manage Change gate.
-CANONICAL_WORKFLOW_SOURCE_APP = "solar_square"
+# when onboarding a new app to the Manage Change gate. Manage Change lives in
+# the itgc app, so itgc holds the canonical YAMLs.
+CANONICAL_WORKFLOW_SOURCE_APP = "itgc"
 
 
 class ManageChange(Document):

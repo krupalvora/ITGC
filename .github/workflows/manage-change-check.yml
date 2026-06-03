@@ -1,0 +1,163 @@
+name: Manage Change Approval Check
+
+on:
+  pull_request:
+    branches:
+      - staging
+      - prod
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write   # needed to post PR comments
+
+jobs:
+  manage-change-check:
+    name: Check Manage Change is approved
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── 1. Poll the ITGC endpoint until Manage Change is approved or window elapses ──
+      # MAX_ATTEMPTS × SLEEP_SECONDS = total wait. Default 30 × 30s = 15 min.
+      # Exits early on success, or on terminal errors that retries won't fix.
+      - name: Poll Manage Change approval state
+        id: check
+        env:
+          ITGC_BASE_URL: ${{ vars.ITGC_BASE_URL }}
+          ITGC_GATE_TOKEN: ${{ secrets.ITGC_GATE_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+          MAX_ATTEMPTS: "20"
+          SLEEP_SECONDS: "30"
+        run: |
+          set -u
+          if [ -z "${ITGC_BASE_URL:-}" ]; then
+            echo "ITGC_BASE_URL variable is not set in repo Settings → Variables" >&2
+            exit 2
+          fi
+
+          PR_URL_ENC=$(printf '%s' "$PR_URL" | jq -sRr @uri)
+          BRANCH_ENC=$(printf '%s' "$TARGET_BRANCH" | jq -sRr @uri)
+          ENDPOINT="${ITGC_BASE_URL%/}/api/method/itgc.api.manage_change_gate.check_pr_approval?pr_url=${PR_URL_ENC}&target_branch=${BRANCH_ENC}"
+
+          AUTH_ARGS=()
+          if [ -n "${ITGC_GATE_TOKEN:-}" ]; then
+            AUTH_ARGS=(-H "X-ITGC-Token: ${ITGC_GATE_TOKEN}")
+          fi
+
+          APPROVED=false
+          REASON=unknown
+          MC_NAME=""
+          WORKFLOW_STATE=""
+          HTTP_CODE="000"
+
+          for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+            HTTP_CODE=$(curl -sS -o /tmp/mc_response.json -w "%{http_code}" "${AUTH_ARGS[@]}" "$ENDPOINT" || echo "000")
+            APPROVED=$(jq -r '.message.approved // false' /tmp/mc_response.json 2>/dev/null || echo "false")
+            REASON=$(jq -r '.message.reason // "unknown"' /tmp/mc_response.json 2>/dev/null || echo "unknown")
+            MC_NAME=$(jq -r '.message.name // ""' /tmp/mc_response.json 2>/dev/null || echo "")
+            WORKFLOW_STATE=$(jq -r '.message.workflow_state // ""' /tmp/mc_response.json 2>/dev/null || echo "")
+
+            echo "Attempt $attempt/$MAX_ATTEMPTS — HTTP $HTTP_CODE, approved=$APPROVED, reason=$REASON"
+
+            if [ "$APPROVED" = "true" ]; then
+              echo "Approved on attempt $attempt (mc=$MC_NAME, workflow_state=$WORKFLOW_STATE)"
+              break
+            fi
+
+            # Terminal errors — retrying won't help, fail fast.
+            case "$REASON" in
+              unauthorized|missing_parameters)
+                echo "Terminal error: $REASON — aborting retries"
+                break
+                ;;
+            esac
+
+            if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+              sleep "$SLEEP_SECONDS"
+            fi
+          done
+
+          echo "Final response body:"
+          cat /tmp/mc_response.json || true
+          echo
+
+          {
+            echo "approved=$APPROVED"
+            echo "reason=$REASON"
+            echo "mc_name=$MC_NAME"
+            echo "workflow_state=$WORKFLOW_STATE"
+            echo "http_code=$HTTP_CODE"
+          } >> "$GITHUB_OUTPUT"
+        continue-on-error: true
+
+      # ── 2. Post a PR comment with the result ─────────────────────────────
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const approved = '${{ steps.check.outputs.approved }}' === 'true';
+            const reason = '${{ steps.check.outputs.reason }}';
+            const mcName = '${{ steps.check.outputs.mc_name }}';
+            const workflowState = '${{ steps.check.outputs.workflow_state }}';
+            const httpCode = '${{ steps.check.outputs.http_code }}';
+            const prUrl = context.payload.pull_request.html_url;
+            const targetBranch = context.payload.pull_request.base.ref;
+
+            const header = approved
+              ? '## ✅ Manage Change Approved'
+              : '## ❌ Manage Change Not Approved';
+
+            const reasonHint = {
+              submitted: 'Matching Manage Change is submitted.',
+              not_submitted: 'Manage Change record exists but is not submitted (docstatus != 1).',
+              no_manage_change_record: 'No Manage Change record found for this PR URL + target branch combination.',
+              missing_parameters: 'Workflow did not send the required parameters — check the action config.',
+              unauthorized: 'Endpoint rejected the call — verify the `ITGC_GATE_TOKEN` secret.',
+              unknown: 'Endpoint returned an unexpected response. Check the workflow logs.',
+            }[reason] || reason;
+
+            const lines = [];
+            lines.push(header);
+            lines.push('');
+            lines.push(`- **PR URL**: ${prUrl}`);
+            lines.push(`- **Target branch**: \`${targetBranch}\``);
+            if (mcName) lines.push(`- **Manage Change**: \`${mcName}\`${workflowState ? ` (workflow state: ${workflowState})` : ''}`);
+            lines.push(`- **Reason**: \`${reason}\` — ${reasonHint}`);
+            lines.push(`- **HTTP**: \`${httpCode}\``);
+            lines.push('');
+            if (!approved) {
+              lines.push(`> **Action required:** Open your submitted Manage Change record (the one approved by your manager for this change) and set \`version_control_url\` to this PR URL. Make sure \`branch\` is \`${targetBranch}\`. The check polls for ~15 minutes; if you take longer, comment \`/recheck\` to trigger a fresh poll.`);
+            }
+
+            const body = lines.join('\n');
+
+            // Delete any previous Manage Change comment to keep the PR clean.
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+            for (const comment of comments.data) {
+              if (comment.body.includes('Manage Change Approved') || comment.body.includes('Manage Change Not Approved')) {
+                await github.rest.issues.deleteComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: comment.id,
+                });
+              }
+            }
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });
+
+      # ── 3. Fail the job if the change is not approved ────────────────────
+      - name: Enforce result
+        if: steps.check.outputs.approved != 'true'
+        run: |
+          echo "Manage Change is not approved for this PR. See the PR comment for details."
+          exit 1
