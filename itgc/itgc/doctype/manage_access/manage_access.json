@@ -21,21 +21,21 @@
   "permission_level",
   "if_owner",
   "permissions_section",
-  "read",
-  "write",
-  "create",
-  "delete",
-  "submit",
+  "perm_read",
+  "perm_write",
+  "perm_create",
+  "perm_delete",
+  "perm_submit",
   "perm_column_break_1",
-  "cancel",
-  "amend",
-  "print",
-  "email",
+  "perm_cancel",
+  "perm_amend",
+  "perm_print",
+  "perm_email",
   "perm_column_break_2",
-  "report",
-  "import",
-  "export",
-  "share"
+  "perm_report",
+  "perm_import",
+  "perm_export",
+  "perm_share"
  ],
  "fields": [
   {
@@ -46,18 +46,18 @@
    "fieldname": "user",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "User",
+   "label": "Requested By",
    "options": "User",
    "read_only": 1,
    "reqd": 1
   },
   {
-   "depends_on": "eval:['New User','Disable User'].includes(doc.request_type)",
    "fieldname": "request_for",
    "fieldtype": "Link",
-   "label": "Request For",
-   "mandatory_depends_on": "eval:['New User','Disable User'].includes(doc.request_type)",
-   "options": "User"
+   "in_list_view": 1,
+   "label": "For User",
+   "options": "User",
+   "reqd": 1
   },
   {
    "fieldname": "column_break_jwou",
@@ -74,7 +74,7 @@
    "fieldtype": "Section Break"
   },
   {
-   "depends_on": "eval:['Request Role','Revoke Role'].includes(doc.request_type)",
+   "depends_on": "eval:['Request Role','Revoke Role','New User'].includes(doc.request_type)",
    "fieldname": "role",
    "fieldtype": "Link",
    "label": "Role",
@@ -82,7 +82,7 @@
    "options": "Role"
   },
   {
-   "depends_on": "eval:['Request Role Profile','Revoke Role Profile'].includes(doc.request_type)",
+   "depends_on": "eval:['Request Role Profile','Revoke Role Profile','New User'].includes(doc.request_type)",
    "fieldname": "role_profile",
    "fieldtype": "Link",
    "label": "Role Profile",
@@ -152,35 +152,35 @@
   },
   {
    "default": "0",
-   "fieldname": "read",
+   "fieldname": "perm_read",
    "fieldtype": "Check",
    "label": "Read",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "write",
+   "fieldname": "perm_write",
    "fieldtype": "Check",
    "label": "Write",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "create",
+   "fieldname": "perm_create",
    "fieldtype": "Check",
    "label": "Create",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "delete",
+   "fieldname": "perm_delete",
    "fieldtype": "Check",
    "label": "Delete",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "submit",
+   "fieldname": "perm_submit",
    "fieldtype": "Check",
    "label": "Submit",
    "permlevel": 1
@@ -192,28 +192,28 @@
   },
   {
    "default": "0",
-   "fieldname": "cancel",
+   "fieldname": "perm_cancel",
    "fieldtype": "Check",
    "label": "Cancel",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "amend",
+   "fieldname": "perm_amend",
    "fieldtype": "Check",
    "label": "Amend",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "print",
+   "fieldname": "perm_print",
    "fieldtype": "Check",
    "label": "Print",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "email",
+   "fieldname": "perm_email",
    "fieldtype": "Check",
    "label": "Email",
    "permlevel": 1
@@ -225,28 +225,28 @@
   },
   {
    "default": "0",
-   "fieldname": "report",
+   "fieldname": "perm_report",
    "fieldtype": "Check",
    "label": "Report",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "import",
+   "fieldname": "perm_import",
    "fieldtype": "Check",
    "label": "Import",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "export",
+   "fieldname": "perm_export",
    "fieldtype": "Check",
    "label": "Export",
    "permlevel": 1
   },
   {
    "default": "0",
-   "fieldname": "share",
+   "fieldname": "perm_share",
    "fieldtype": "Check",
    "label": "Share",
    "permlevel": 1

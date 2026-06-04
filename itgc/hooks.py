@@ -138,9 +138,14 @@ after_install = "itgc.install.after_install"
 
 doc_events = {
 	"User": {
-		# Runs after core's role-profile sync; re-asserts the ITGC Access
-		# Manager role for the user configured in ITGC Settings.
-		"validate": "itgc.overrides.user.ensure_access_manager_role",
+		# Both run after core's role-profile sync (which strips ad-hoc roles for
+		# role-profile users) and re-assert roles that should persist:
+		#   - the ITGC Access Manager role for the user set in ITGC Settings
+		#   - roles granted via submitted Manage Access records
+		"validate": [
+			"itgc.overrides.user.ensure_access_manager_role",
+			"itgc.overrides.user.ensure_granted_roles",
+		],
 	},
 }
 
