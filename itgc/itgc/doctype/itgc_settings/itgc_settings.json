@@ -4,15 +4,16 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "manage_access_tab",
+  "enable_manage_access",
+  "html_xhwo",
+  "access_manager",
+  "access_manager_role_holders",
   "manage_change_tab",
   "manage_change_api_section",
   "protect_manage_change_status_endpoint",
   "manage_change_status_endpoint_token",
-  "manage_change_api_help",
-  "manage_access_tab",
-  "enable_manage_access",
-  "html_xhwo",
-  "access_manager"
+  "manage_change_api_help"
  ],
  "fields": [
   {
@@ -65,11 +66,18 @@
    "fieldtype": "Link",
    "label": "Access Manager",
    "options": "User"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "description": "Users who currently hold the \"ITGC Access Manager\" role (live view).",
+   "fieldname": "access_manager_role_holders",
+   "fieldtype": "HTML",
+   "label": "Access Manager Role Holders"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-06-05 00:11:22.013499",
+ "modified": "2026-06-05 00:31:08.705618",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "ITGC Settings",

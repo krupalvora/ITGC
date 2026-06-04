@@ -15,11 +15,13 @@ class ITGCSettings(Document):
 		"""Keep the 'ITGC Access Manager' role in sync with the selected access_manager.
 
 		Grants the role to the newly selected user and removes it from the
-		previously selected user when the field changes.
+		previously selected user when the field changes. The grant is also
+		re-asserted on every User save by `itgc.overrides.user`, which is what
+		makes it stick for users that have a Role Profile (Frappe core wipes
+		ad-hoc roles during profile sync).
 		"""
 		previous = (self.get_doc_before_save() or {}).get("access_manager")
 		current = self.access_manager
-
 		if previous == current:
 			return
 
@@ -27,4 +29,33 @@ class ITGCSettings(Document):
 			frappe.get_doc("User", previous).remove_roles(ACCESS_MANAGER_ROLE)
 
 		if current and frappe.db.exists("User", current):
-			frappe.get_doc("User", current).add_roles(ACCESS_MANAGER_ROLE)
+			# Pass the new manager explicitly so the User validate hook re-asserts
+			# the role after Frappe's role-profile sync strips it on save.
+			frappe.flags.itgc_access_manager = current
+			try:
+				frappe.get_doc("User", current).add_roles(ACCESS_MANAGER_ROLE)
+			finally:
+				frappe.flags.itgc_access_manager = False
+
+
+@frappe.whitelist()
+def get_access_manager_role_users():
+	"""Return users who currently hold the 'ITGC Access Manager' role.
+
+	Read live from `Has Role` so the list always reflects the true state,
+	regardless of where the role was assigned/removed.
+	"""
+	user_ids = frappe.get_all(
+		"Has Role",
+		filters={"parenttype": "User", "role": ACCESS_MANAGER_ROLE},
+		pluck="parent",
+	)
+	if not user_ids:
+		return []
+
+	return frappe.get_all(
+		"User",
+		filters={"name": ["in", user_ids]},
+		fields=["name as user", "full_name", "enabled"],
+		order_by="enabled desc, full_name asc",
+	)

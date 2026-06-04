@@ -136,6 +136,14 @@ after_install = "itgc.install.after_install"
 # ---------------
 # Hook on document methods and events
 
+doc_events = {
+	"User": {
+		# Runs after core's role-profile sync; re-asserts the ITGC Access
+		# Manager role for the user configured in ITGC Settings.
+		"validate": "itgc.overrides.user.ensure_access_manager_role",
+	},
+}
+
 # Scheduled Tasks
 # ---------------
 
