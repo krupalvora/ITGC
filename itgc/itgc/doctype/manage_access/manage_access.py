@@ -20,6 +20,11 @@ class ManageAccess(Document):
 		if not self.user:
 			self.user = frappe.session.user
 
+		# Except New User / Disable User (which act on someone else), default the
+		# subject to the requester.
+		if not self.request_for and self.request_type not in (NEW_USER, DISABLE_USER):
+			self.request_for = self.user
+
 	def validate(self):
 		self.validate_request()
 

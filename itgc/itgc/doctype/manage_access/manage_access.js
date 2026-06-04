@@ -15,9 +15,18 @@ frappe.ui.form.on("Manage Access", {
 
 	request_type(frm) {
 		// Clear fields that no longer apply so hidden values don't get submitted.
-		frm.set_value("request_for", null);
 		frm.set_value("role", null);
 		frm.set_value("role_profile", null);
+
+		// New User / Disable User act on someone else -> blank. Every other type
+		// defaults to the current user (still editable).
+		if (["New User", "Disable User"].includes(frm.doc.request_type)) {
+			frm.set_value("request_for", null);
+		} else if (frm.doc.request_type) {
+			frm.set_value("request_for", frappe.session.user);
+		} else {
+			frm.set_value("request_for", null);
+		}
 	},
 });
 

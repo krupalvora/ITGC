@@ -57,6 +57,7 @@
    "in_list_view": 1,
    "label": "For User",
    "options": "User",
+   "read_only_depends_on": "eval:!['New User','Disable User'].includes(doc.request_type)",
    "reqd": 1
   },
   {
