@@ -34,7 +34,6 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Branch",
-   "link_filters": "[[\"Manage Change VC Branch\",\"is_default\",\"=\",1]]",
    "options": "Manage Change VC Branch",
    "reqd": 1
   },
@@ -137,7 +136,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-03 16:19:56.854747",
+ "modified": "2026-06-03 18:16:05.582535",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Change",

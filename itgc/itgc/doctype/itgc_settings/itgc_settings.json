@@ -1,13 +1,18 @@
 {
  "actions": [],
- "creation": "2026-05-20 11:30:00.000000",
+ "creation": "2026-05-20 11:30:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
+  "manage_change_tab",
   "manage_change_api_section",
   "protect_manage_change_status_endpoint",
   "manage_change_status_endpoint_token",
-  "manage_change_api_help"
+  "manage_change_api_help",
+  "manage_access_tab",
+  "enable_manage_access",
+  "html_xhwo",
+  "access_manager"
  ],
  "fields": [
   {
@@ -30,12 +35,41 @@
   {
    "fieldname": "manage_change_api_help",
    "fieldtype": "HTML",
-   "options": "<p>Used by the GitHub Actions merge gate. Endpoint: <code>itgc.api.manage_change_gate.check_pr_approval</code>. When the flag above is enabled, callers must send the token in the <code>X-ITGC-Token</code> header; otherwise the endpoint is public (read-only — it only reveals approval state for a given PR URL + branch).</p>"
+   "options": "<p>Used by the GitHub Actions merge gate. Endpoint: <code>itgc.api.manage_change_gate.check_pr_approval</code>. When the flag above is enabled, callers must send the token in the <code>X-ITGC-Token</code> header; otherwise the endpoint is public (read-only \u2014 it only reveals approval state for a given PR URL + branch).</p>"
+  },
+  {
+   "fieldname": "manage_change_tab",
+   "fieldtype": "Tab Break",
+   "label": "Manage Change"
+  },
+  {
+   "fieldname": "manage_access_tab",
+   "fieldtype": "Tab Break",
+   "label": "Manage Access"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_manage_access",
+   "fieldtype": "Check",
+   "label": "Enable Manage Access"
+  },
+  {
+   "fieldname": "html_xhwo",
+   "fieldtype": "HTML",
+   "options": "<p>This will disable direct access to doctypes where roles can be modified: <code>User, Role Profile</code>.</p>"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "description": "User who owns access-granting responsibility (top of org). This user is automatically assigned the \"ITGC Access Manager\" role, which authorises granting/revoking access to other users.",
+   "fieldname": "access_manager",
+   "fieldtype": "Link",
+   "label": "Access Manager",
+   "options": "User"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-05-30 16:30:00.000000",
+ "modified": "2026-06-05 00:11:22.013499",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "ITGC Settings",
@@ -51,7 +85,6 @@
    "write": 1
   }
  ],
- "row_format": "Dynamic",
  "sort_field": "modified",
  "sort_order": "DESC",
  "states": [],

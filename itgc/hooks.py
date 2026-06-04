@@ -82,7 +82,7 @@ app_license = "mit"
 # Installation
 # ------------
 
-# after_install = "itgc.install.after_install"
+after_install = "itgc.install.after_install"
 
 # Uninstallation
 # ------------

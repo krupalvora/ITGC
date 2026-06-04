@@ -1,0 +1,28 @@
+{
+ "add_total_row": 1,
+ "columns": [],
+ "creation": "2026-06-04 23:56:53.203564",
+ "disabled": 0,
+ "docstatus": 0,
+ "doctype": "Report",
+ "filters": [],
+ "idx": 0,
+ "is_standard": "Yes",
+ "letter_head": "Solar Square",
+ "letterhead": null,
+ "modified": "2026-06-04 23:59:06.069918",
+ "modified_by": "Administrator",
+ "module": "ITGC",
+ "name": "ITGC-User-Role-Permission",
+ "owner": "Administrator",
+ "prepared_report": 0,
+ "query": "SELECT\n    p.parent AS doctype,\n    p.parent AS role,\n    p.if_owner,\n    p.permlevel,\n    p.read,\n    p.write,\n    \n    p.create,\n    p.delete,\n    p.submit,\n    p.cancel,\n    p.amend,\n    \n    p.report,\n    p.export,\n    p.import,\n    \n    p.share,\n    p.print,\n    p.email\n    \nFROM `tabCustom DocPerm` p\nORDER BY p.parent, p.role;",
+ "ref_doctype": "User",
+ "report_name": "ITGC-User-Role-Permission",
+ "report_type": "Query Report",
+ "roles": [
+  {
+   "role": "System Manager"
+  }
+ ]
+}
