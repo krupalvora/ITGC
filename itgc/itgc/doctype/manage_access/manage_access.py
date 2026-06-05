@@ -12,6 +12,10 @@ REQUEST_ROLE_PROFILE = "Request Role Profile"
 DISABLE_USER = "Disable User"
 REVOKE_ROLE = "Revoke Role"
 REVOKE_ROLE_PROFILE = "Revoke Role Profile"
+CHANGE_DOC_PERM = "Change Doctype Permission"  # System-Manager-only doc-perm change
+
+# Types that do not act on a subject user (request_for).
+NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM)
 
 class ManageAccess(Document):
 	def before_insert(self):
@@ -20,13 +24,22 @@ class ManageAccess(Document):
 		if not self.user:
 			self.user = frappe.session.user
 
-		# Except New User / Disable User (which act on someone else), default the
-		# subject to the requester.
-		if not self.request_for and self.request_type not in (NEW_USER, DISABLE_USER):
+		# Default the subject to the requester for the self-oriented types. New User /
+		# Disable User target someone else; Change Doctype Permission has no subject.
+		if self.request_type and self.request_type not in NO_SUBJECT_TYPES and not self.request_for:
 			self.request_for = self.user
 
 	def validate(self):
 		self.validate_request()
+
+	def before_submit(self):
+		# Snapshot the role's current permissions on this doctype for the audit
+		# trail, BEFORE apply() mutates them in on_submit.
+		if self.request_type == CHANGE_DOC_PERM:
+			snapshot = get_effective_doc_perm(
+				self.document_type, self.perm_role, int(self.permission_level or 0)
+			)
+			self.previous_permission = frappe.as_json(snapshot)
 
 	def on_submit(self):
 		self.apply()
@@ -52,6 +65,12 @@ class ManageAccess(Document):
 		if not self.request_type:
 			frappe.throw(_("Request Type is required."))
 
+		# Change Doctype Permission: Doctype + Role are required, no subject user.
+		if self.request_type == CHANGE_DOC_PERM:
+			if not self.document_type or not self.perm_role:
+				frappe.throw(_("To change permissions, select both Doctype and Role."))
+			return
+
 		if not self.request_for:
 			frappe.throw(_("Please select the user in 'For User'."))
 
@@ -66,6 +85,10 @@ class ManageAccess(Document):
 
 	# -------------------------------------------------------------------- apply
 	def apply(self):
+		if self.request_type == CHANGE_DOC_PERM:
+			self.apply_doc_perm()
+			return
+
 		handlers = {
 			NEW_USER: self.apply_new_user,
 			REQUEST_ROLE: self.apply_request_role,
@@ -114,3 +137,85 @@ class ManageAccess(Document):
 		user = self.get_target_doc()
 		user.enabled = 0
 		user.save()
+
+	# Maps Manage Access checkbox fields -> Custom DocPerm permission properties.
+	DOC_PERM_RIGHTS = {
+		"perm_select": "select",
+		"perm_read": "read",
+		"perm_write": "write",
+		"perm_create": "create",
+		"perm_delete": "delete",
+		"perm_submit": "submit",
+		"perm_cancel": "cancel",
+		"perm_amend": "amend",
+		"perm_print": "print",
+		"perm_email": "email",
+		"perm_report": "report",
+		"perm_import": "import",
+		"perm_export": "export",
+		"perm_share": "share",
+	}
+
+	def apply_doc_perm(self):
+		"""Apply the requested permission row to the doctype's Custom DocPerm.
+
+		Mirrors what the Role Permissions Manager does: ensures a permission row
+		for (document_type, perm_role, permission_level) and sets each right /
+		the "if owner" flag to match the checkboxes on this record.
+		"""
+		from frappe.permissions import add_permission, update_permission_property
+
+		permlevel = int(self.permission_level or 0)
+		add_permission(self.document_type, self.perm_role, permlevel)
+
+		for fieldname, ptype in self.DOC_PERM_RIGHTS.items():
+			update_permission_property(
+				self.document_type, self.perm_role, permlevel, ptype,
+				1 if self.get(fieldname) else 0, validate=False,
+			)
+		update_permission_property(
+			self.document_type, self.perm_role, permlevel, "if_owner",
+			1 if self.if_owner else 0, validate=False,
+		)
+		frappe.clear_cache(doctype=self.document_type)
+
+
+# All DocPerm permission flags tracked for doc-perm changes (checkbox ptypes + if_owner).
+DOC_PERM_PTYPES = (
+	"select", "read", "write", "create", "delete", "submit", "cancel", "amend",
+	"print", "email", "report", "import", "export", "share", "if_owner",
+)
+
+
+def get_effective_doc_perm(document_type, role, permlevel=0):
+	"""Current effective permission flags for (doctype, role, permlevel).
+
+	Custom DocPerm overrides standard DocPerm whenever any Custom DocPerm row
+	exists for the doctype (Frappe's rule), so read from whichever is in effect.
+	"""
+	permlevel = int(permlevel or 0)
+	table = "Custom DocPerm" if frappe.db.exists("Custom DocPerm", {"parent": document_type}) else "DocPerm"
+	rows = frappe.get_all(
+		table,
+		filters={"parent": document_type, "role": role, "permlevel": permlevel},
+		fields=[f"`{p}`" for p in DOC_PERM_PTYPES],
+		limit=1,
+	)
+	if not rows:
+		return {p: 0 for p in DOC_PERM_PTYPES}
+	return {p: int(rows[0].get(p) or 0) for p in DOC_PERM_PTYPES}
+
+
+@frappe.whitelist()
+def get_current_doc_perm(document_type, perm_role, permission_level=0):
+	"""Form helper: current permissions keyed by Manage Access field names.
+
+	Used to pre-fill the checkboxes so an admin edits from the real current state
+	(and so submitting never silently wipes rights they didn't intend to remove).
+	"""
+	frappe.only_for("System Manager")
+	snapshot = get_effective_doc_perm(document_type, perm_role, permission_level)
+	return {
+		("if_owner" if ptype == "if_owner" else f"perm_{ptype}"): value
+		for ptype, value in snapshot.items()
+	}

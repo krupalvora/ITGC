@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "creation": "2026-06-05 01:07:16.689895",
+ "creation": "2026-06-05 19:16:37.621383",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -21,13 +21,14 @@
   "permission_level",
   "if_owner",
   "permissions_section",
+  "perm_select",
   "perm_read",
   "perm_write",
   "perm_create",
-  "perm_delete",
   "perm_submit",
   "perm_column_break_1",
   "perm_cancel",
+  "perm_delete",
   "perm_amend",
   "perm_print",
   "perm_email",
@@ -35,7 +36,9 @@
   "perm_report",
   "perm_import",
   "perm_export",
-  "perm_share"
+  "perm_share",
+  "previous_permission_section",
+  "previous_permission"
  ],
  "fields": [
   {
@@ -52,13 +55,14 @@
    "reqd": 1
   },
   {
+   "depends_on": "eval:doc.request_type!='Change Doctype Permission'",
    "fieldname": "request_for",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "For User",
+   "mandatory_depends_on": "eval:doc.request_type && doc.request_type!='Change Doctype Permission'",
    "options": "User",
-   "read_only_depends_on": "eval:!['New User','Disable User'].includes(doc.request_type)",
-   "reqd": 1
+   "read_only_depends_on": "eval:!['New User','Disable User'].includes(doc.request_type)"
   },
   {
    "fieldname": "column_break_jwou",
@@ -68,7 +72,8 @@
    "fieldname": "request_type",
    "fieldtype": "Select",
    "label": "Request Type",
-   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile"
+   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile\nChange Doctype Permission",
+   "reqd": 1
   },
   {
    "fieldname": "section_break_kcsz",
@@ -106,7 +111,7 @@
    "label": "Request for Role"
   },
   {
-   "depends_on": "eval:frappe.user_roles.includes('System Manager')",
+   "depends_on": "eval:frappe.user_roles.includes('System Manager') && doc.request_type=='Change Doctype Permission'",
    "fieldname": "change_doc_perm_tab",
    "fieldtype": "Tab Break",
    "label": "Change Doc Perm",
@@ -116,7 +121,7 @@
    "fieldname": "document_type",
    "fieldtype": "Link",
    "label": "Doctype",
-   "mandatory_depends_on": "eval:doc.document_type || doc.perm_role",
+   "mandatory_depends_on": "eval:doc.request_type=='Change Doctype Permission'",
    "options": "DocType",
    "permlevel": 1
   },
@@ -124,7 +129,7 @@
    "fieldname": "perm_role",
    "fieldtype": "Link",
    "label": "Role",
-   "mandatory_depends_on": "eval:doc.document_type || doc.perm_role",
+   "mandatory_depends_on": "eval:doc.request_type=='Change Doctype Permission'",
    "options": "Role",
    "permlevel": 1
   },
@@ -149,6 +154,13 @@
    "fieldname": "permissions_section",
    "fieldtype": "Section Break",
    "label": "Permissions",
+   "permlevel": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "perm_select",
+   "fieldtype": "Check",
+   "label": "Select",
    "permlevel": 1
   },
   {
@@ -251,12 +263,28 @@
    "fieldtype": "Check",
    "label": "Share",
    "permlevel": 1
+  },
+  {
+   "depends_on": "eval:doc.previous_permission",
+   "fieldname": "previous_permission_section",
+   "fieldtype": "Section Break",
+   "label": "Audit Trail",
+   "permlevel": 1
+  },
+  {
+   "description": "Snapshot of the role's permissions on this doctype BEFORE this change was applied (captured at submit). The checkboxes above are the AFTER state.",
+   "fieldname": "previous_permission",
+   "fieldtype": "Code",
+   "label": "Previous Permissions (before change)",
+   "options": "JSON",
+   "permlevel": 1,
+   "read_only": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-05 01:11:38.893563",
+ "modified": "2026-06-05 19:18:39.317779",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Access",
@@ -284,5 +312,6 @@
  ],
  "sort_field": "modified",
  "sort_order": "DESC",
- "states": []
+ "states": [],
+ "track_changes": 1
 }
