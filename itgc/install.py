@@ -139,6 +139,10 @@ def ensure_manage_change_workflow():
 	if not frappe.db.exists("DocType", MANAGE_CHANGE_DOCTYPE):
 		return
 
+	# The workflow's states/transitions link to these roles, so they must exist
+	# first. Idempotent — covers running this function standalone (e.g. on a site
+	# where the app was already installed) without first calling create_itgc_roles.
+	create_itgc_roles()
 	_ensure_workflow_masters()
 
 	if frappe.db.exists("Workflow", MC_WORKFLOW_NAME):

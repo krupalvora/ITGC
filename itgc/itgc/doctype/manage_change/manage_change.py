@@ -63,6 +63,16 @@ class ManageChange(Document):
 		if self._notifications_enabled():
 			self._notify_requester_of_approval()
 
+	def on_update(self):
+		# A rejection keeps the doc at docstatus 0 (no on_submit fires), so detect
+		# the workflow transition into "Rejected" here and tell the requester.
+		if (
+			self.workflow_state == "Rejected"
+			and self.has_value_changed("workflow_state")
+			and self._notifications_enabled()
+		):
+			self._notify_requester_of_rejection()
+
 	# --- Notifications -----------------------------------------------------
 	def _notifications_enabled(self):
 		settings = frappe.get_cached_doc("ITGC Settings")
@@ -111,6 +121,19 @@ class ManageChange(Document):
 			"<p>Your Manage Change request <b>{0}</b> has been <b>approved</b> by {1}.</p>"
 			'<p><a href="{2}">Open the request</a>.</p>'
 		).format(self.name, approved_by, url)
+		self._send_notification([self.owner], subject, message)
+
+	def _notify_requester_of_rejection(self):
+		if not self.owner:
+			return
+
+		url = get_url_to_form(self.doctype, self.name)
+		rejected_by = get_fullname(frappe.session.user) or frappe.session.user
+		subject = _("Your Manage Change {0} has been rejected").format(self.name)
+		message = _(
+			"<p>Your Manage Change request <b>{0}</b> has been <b>rejected</b> by {1}.</p>"
+			'<p><a href="{2}">Open the request</a> to review and resubmit if needed.</p>'
+		).format(self.name, rejected_by, url)
 		self._send_notification([self.owner], subject, message)
 
 	def _send_notification(self, user_ids, subject, message):
