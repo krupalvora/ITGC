@@ -4,6 +4,7 @@
 import hmac
 
 import frappe
+from frappe.utils.password import get_decrypted_password
 
 
 def _is_authorized():
@@ -21,7 +22,7 @@ def _is_authorized():
 	if allow_public:
 		return True
 
-	expected = frappe.utils.password.get_decrypted_password(
+	expected = get_decrypted_password(
 		"ITGC Settings",
 		"ITGC Settings",
 		fieldname="manage_change_status_endpoint_token",

@@ -31,7 +31,7 @@ jobs:
           ITGC_GATE_TOKEN: ${{ secrets.ITGC_GATE_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
-          MAX_ATTEMPTS: "20"
+          MAX_ATTEMPTS: "30"
           SLEEP_SECONDS: "30"
         run: |
           set -u
