@@ -13,19 +13,20 @@ class ITGCSettings(Document):
 		self.sync_change_management_workflow()
 
 	def sync_change_management_workflow(self):
-		"""Activate/deactivate the Manage Change approval workflow.
+		"""Keep the Manage Change approval workflow's active state in sync.
 
-		The workflow ships disabled with the app; flipping "Enable Change
-		Management" is what turns the gated approval flow on (and off again).
+		The workflow ships disabled with the app; the "Enable Change Management"
+		flag is what turns the gated approval flow on (and off again).
+
+		We enforce the workflow state on *every* save rather than only when the
+		flag changes. That makes it self-healing: if the workflow and flag ever
+		drift apart (e.g. the workflow was toggled by hand, or the flag was set
+		while this hook wasn't deployed), the next Settings save reconciles them.
+		`set_manage_change_workflow_active` is a no-op when already in sync.
 		"""
-		previous = (self.get_doc_before_save() or {}).get("enable_change_management")
-		current = self.enable_change_management
-		if previous == current:
-			return
-
 		from itgc.install import set_manage_change_workflow_active
 
-		set_manage_change_workflow_active(bool(current))
+		set_manage_change_workflow_active(bool(self.enable_change_management))
 
 	def sync_access_manager_role(self):
 		"""Keep the 'ITGC Access Manager' role in sync with the selected access_manager.
