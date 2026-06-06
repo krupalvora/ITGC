@@ -10,6 +10,22 @@ ACCESS_MANAGER_ROLE = "ITGC Access Manager"
 class ITGCSettings(Document):
 	def on_update(self):
 		self.sync_access_manager_role()
+		self.sync_change_management_workflow()
+
+	def sync_change_management_workflow(self):
+		"""Activate/deactivate the Manage Change approval workflow.
+
+		The workflow ships disabled with the app; flipping "Enable Change
+		Management" is what turns the gated approval flow on (and off again).
+		"""
+		previous = (self.get_doc_before_save() or {}).get("enable_change_management")
+		current = self.enable_change_management
+		if previous == current:
+			return
+
+		from itgc.install import set_manage_change_workflow_active
+
+		set_manage_change_workflow_active(bool(current))
 
 	def sync_access_manager_role(self):
 		"""Keep the 'ITGC Access Manager' role in sync with the selected access_manager.

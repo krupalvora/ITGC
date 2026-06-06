@@ -12,6 +12,7 @@
   "manage_change_tab",
   "manage_change_api_section",
   "enable_change_management",
+  "notify_manage_change",
   "protect_manage_change_status_endpoint",
   "manage_change_status_endpoint_token",
   "manage_change_api_help"
@@ -81,6 +82,14 @@
    "fieldname": "enable_change_management",
    "fieldtype": "Check",
    "label": "Enable Change Management"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_change_management",
+   "description": "Email & in-app notify the department approvers (with a link) when a change is raised, and notify the requester once it is approved.",
+   "fieldname": "notify_manage_change",
+   "fieldtype": "Check",
+   "label": "Send Approval Notifications"
   }
  ],
  "issingle": 1,

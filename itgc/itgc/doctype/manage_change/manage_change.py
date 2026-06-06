@@ -4,9 +4,10 @@
 import os
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 from frappe.model.naming import make_autoname
-from frappe.utils import get_bench_path, now_datetime
+from frappe.utils import get_bench_path, get_fullname, get_url_to_form, now_datetime
 
 
 REQUIRED_WORKFLOW_FILES = (
@@ -49,6 +50,94 @@ class ManageChange(Document):
 
 	def before_submit(self):
 		self._enforce_workflow_files_present()
+
+	def after_insert(self):
+		# A freshly raised change sits in the workflow's first state (Pending) and
+		# needs the department's approvers to act on it.
+		if self._notifications_enabled():
+			self._notify_approvers_of_request()
+
+	def on_submit(self):
+		# Submit only happens via the workflow "Approve" transition, so reaching
+		# docstatus 1 means the change was approved -> tell the requester.
+		if self._notifications_enabled():
+			self._notify_requester_of_approval()
+
+	# --- Notifications -----------------------------------------------------
+	def _notifications_enabled(self):
+		settings = frappe.get_cached_doc("ITGC Settings")
+		return bool(settings.enable_change_management and settings.notify_manage_change)
+
+	def _approver_user_ids(self):
+		# De-duplicate while preserving order.
+		return list(dict.fromkeys(row.user for row in (self.approver or []) if row.user))
+
+	def _notify_approvers_of_request(self):
+		recipients = self._approver_user_ids()
+		if not recipients:
+			return
+
+		url = get_url_to_form(self.doctype, self.name)
+		raised_by = get_fullname(self.owner) or self.owner
+		subject = _("Manage Change {0} awaiting your approval").format(self.name)
+		message = _(
+			"<p>A Manage Change request <b>{0}</b> has been raised and is awaiting your approval.</p>"
+			"<ul>"
+			"<li><b>Department:</b> {1}</li>"
+			"<li><b>Change Type:</b> {2}</li>"
+			"<li><b>App / Branch:</b> {3} / {4}</li>"
+			"<li><b>Raised by:</b> {5}</li>"
+			"</ul>"
+			'<p><a href="{6}">Open the request</a> to approve or reject it.</p>'
+		).format(
+			self.name,
+			self.department or "",
+			self.change_type or "",
+			self.erp_app or "",
+			self.branch or "",
+			raised_by,
+			url,
+		)
+		self._send_notification(recipients, subject, message)
+
+	def _notify_requester_of_approval(self):
+		if not self.owner:
+			return
+
+		url = get_url_to_form(self.doctype, self.name)
+		approved_by = get_fullname(frappe.session.user) or frappe.session.user
+		subject = _("Your Manage Change {0} has been approved").format(self.name)
+		message = _(
+			"<p>Your Manage Change request <b>{0}</b> has been <b>approved</b> by {1}.</p>"
+			'<p><a href="{2}">Open the request</a>.</p>'
+		).format(self.name, approved_by, url)
+		self._send_notification([self.owner], subject, message)
+
+	def _send_notification(self, user_ids, subject, message):
+		"""Deliver both an in-app (bell) alert and an email to each user."""
+		for user in user_ids:
+			frappe.get_doc(
+				{
+					"doctype": "Notification Log",
+					"for_user": user,
+					"type": "Alert",
+					"subject": subject,
+					"email_content": message,
+					"document_type": self.doctype,
+					"document_name": self.name,
+				}
+			).insert(ignore_permissions=True)
+
+		emails = [frappe.db.get_value("User", u, "email") or u for u in user_ids]
+		emails = [e for e in emails if e]
+		if emails:
+			frappe.sendmail(
+				recipients=emails,
+				subject=subject,
+				message=message,
+				reference_doctype=self.doctype,
+				reference_name=self.name,
+			)
 
 	def _enforce_workflow_files_present(self):
 		# The MC gate is enforced by GitHub Actions workflow files living in the
