@@ -11,6 +11,7 @@
   "access_manager_role_holders",
   "manage_change_tab",
   "manage_change_api_section",
+  "enable_change_management",
   "protect_manage_change_status_endpoint",
   "manage_change_status_endpoint_token",
   "manage_change_api_help"
@@ -73,11 +74,18 @@
    "fieldname": "access_manager_role_holders",
    "fieldtype": "HTML",
    "label": "Access Manager Role Holders"
+  },
+  {
+   "default": "0",
+   "description": "Enable will disable github PR merge of specific branch without approvals",
+   "fieldname": "enable_change_management",
+   "fieldtype": "Check",
+   "label": "Enable Change Management"
   }
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-06-05 00:31:08.705618",
+ "modified": "2026-06-06 12:22:18.799852",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "ITGC Settings",

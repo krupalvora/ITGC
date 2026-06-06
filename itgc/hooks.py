@@ -138,15 +138,43 @@ after_install = "itgc.install.after_install"
 
 doc_events = {
 	"User": {
-		# Both run after core's role-profile sync (which strips ad-hoc roles for
-		# role-profile users) and re-assert roles that should persist:
-		#   - the ITGC Access Manager role for the user set in ITGC Settings
-		#   - roles granted via submitted Manage Access records
+		# block_user_role_change MUST stay first: it compares the submitted roles to
+		# the DB before the re-assert hooks below mutate the roles table.
 		"validate": [
+			"itgc.overrides.access_guard.block_user_role_change",
+			# Both run after core's role-profile sync (which strips ad-hoc roles for
+			# role-profile users) and re-assert roles that should persist:
+			#   - the ITGC Access Manager role for the user set in ITGC Settings
+			#   - roles granted via submitted Manage Access records
 			"itgc.overrides.user.ensure_access_manager_role",
 			"itgc.overrides.user.ensure_granted_roles",
 		],
+		"on_trash": "itgc.overrides.access_guard.block_user_trash",
 	},
+	# Lock the access masters: only the Manage Access submit flow (which sets
+	# frappe.flags.in_manage_access) may write them while Manage Access is enabled.
+	"Role": {
+		"validate": "itgc.overrides.access_guard.block_doc",
+		"on_trash": "itgc.overrides.access_guard.block_doc",
+	},
+	"Role Profile": {
+		"validate": "itgc.overrides.access_guard.block_doc",
+		"on_trash": "itgc.overrides.access_guard.block_doc",
+	},
+	"Custom DocPerm": {
+		"validate": "itgc.overrides.access_guard.block_doc",
+		"on_trash": "itgc.overrides.access_guard.block_doc",
+	},
+}
+
+# Block the core Doctype Permissions page (Role Permission Manager). Its
+# update/remove/reset write Custom DocPerm via raw SQL, so doc_events cannot catch
+# them -- guard the whitelisted endpoints instead.
+override_whitelisted_methods = {
+	"frappe.core.page.permission_manager.permission_manager.add": "itgc.overrides.perms.add",
+	"frappe.core.page.permission_manager.permission_manager.update": "itgc.overrides.perms.update",
+	"frappe.core.page.permission_manager.permission_manager.remove": "itgc.overrides.perms.remove",
+	"frappe.core.page.permission_manager.permission_manager.reset": "itgc.overrides.perms.reset",
 }
 
 # Scheduled Tasks

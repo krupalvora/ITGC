@@ -45,7 +45,14 @@ class ManageAccess(Document):
 			self.previous_permission = frappe.as_json(snapshot)
 
 	def on_submit(self):
-		self.apply()
+		# Mark this as the sanctioned writer so the access-master guards
+		# (itgc.overrides.access_guard) let our User / Role Profile / Custom DocPerm
+		# writes through while Manage Access governance is enabled.
+		frappe.flags.in_manage_access = True
+		try:
+			self.apply()
+		finally:
+			frappe.flags.in_manage_access = False
 
 	# ------------------------------------------------------------------ helpers
 	@property
