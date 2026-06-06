@@ -39,9 +39,17 @@ frappe.ui.form.on("Manage Access", {
 		frm.clear_table("profile_roles");
 		frm.refresh_field("profile_roles");
 
-		// No-subject types (New User, Disable User, Change Doctype Permission) -> blank.
-		// The remaining self-oriented types default to the current user (still editable).
-		if (["New User", "Disable User", "Change Doctype Permission"].includes(frm.doc.request_type)) {
+		// No-subject types -> blank. Create/Modify Role Profile act on the profile
+		// itself, not a user. The remaining self-oriented types default to the current
+		// user (still editable).
+		const no_subject = [
+			"New User",
+			"Disable User",
+			"Change Doctype Permission",
+			"Create Role Profile",
+			"Modify Role Profile",
+		];
+		if (no_subject.includes(frm.doc.request_type)) {
 			frm.set_value("request_for", null);
 		} else if (frm.doc.request_type) {
 			frm.set_value("request_for", frappe.session.user);

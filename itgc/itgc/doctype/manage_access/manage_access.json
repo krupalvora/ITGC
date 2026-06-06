@@ -59,12 +59,12 @@
    "reqd": 1
   },
   {
-   "depends_on": "eval:doc.request_type!='Change Doctype Permission'",
+   "depends_on": "eval:!['Change Doctype Permission','Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
    "fieldname": "request_for",
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "For User",
-   "mandatory_depends_on": "eval:doc.request_type && doc.request_type!='Change Doctype Permission'",
+   "mandatory_depends_on": "eval:doc.request_type && !['Change Doctype Permission','Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
    "options": "User",
    "read_only_depends_on": "eval:!['New User','Disable User'].includes(doc.request_type)"
   },
