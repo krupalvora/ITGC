@@ -28,6 +28,25 @@ class ManageChange(Document):
 			formatted_date = now_datetime().strftime("%Y-%m-%d")
 			self.name = make_autoname(f"MC-{formatted_date}-.##")
 
+	def validate(self):
+		self._sync_approver_from_department()
+
+	def _sync_approver_from_department(self):
+		# Approver is a read-only Table MultiSelect that mirrors the HOD list of
+		# the selected department. It can't use fetch_from (that only works for
+		# scalar fields), so we copy the department's HOD rows here.
+		self.set("approver", [])
+		if not self.department:
+			return
+		hods = frappe.get_all(
+			"Manage Change HOD",
+			filters={"parent": self.department, "parenttype": "Manage Change Department"},
+			pluck="user",
+			order_by="idx asc",
+		)
+		for user in hods:
+			self.append("approver", {"user": user})
+
 	def before_submit(self):
 		self._enforce_workflow_files_present()
 

@@ -6,26 +6,26 @@
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
-  "hod",
-  "name1"
+  "name1",
+  "hod"
  ],
  "fields": [
   {
    "fieldname": "hod",
-   "fieldtype": "Link",
-   "label": "HOD",
-   "options": "User"
+   "fieldtype": "Table MultiSelect",
+   "label": "Approver",
+   "options": "Manage Change HOD"
   },
   {
    "fieldname": "name1",
    "fieldtype": "Data",
-   "label": "Name",
+   "label": "Department Name",
    "unique": 1
   }
  ],
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-05-30 15:03:43.462200",
+ "modified": "2026-06-06 13:50:55.869485",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Change Department",

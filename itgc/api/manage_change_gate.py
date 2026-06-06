@@ -33,7 +33,7 @@ def check_pr_approval(pr_url=None, target_branch=None):
 			return {"approved": False, "reason": "missing_parameters"}
 
 		has_workflow_state = frappe.get_meta("Manage Change").has_field("workflow_state")
-		fields = ["name", "docstatus", "approver", "ticket_id"]
+		fields = ["name", "docstatus", "ticket_id"]
 		if has_workflow_state:
 			fields.append("workflow_state")
 
@@ -56,12 +56,18 @@ def check_pr_approval(pr_url=None, target_branch=None):
 
 		mc = rows[0]
 		approved = mc.docstatus == 1
+		approvers = frappe.get_all(
+			"Manage Change HOD",
+			filters={"parent": mc.name, "parenttype": "Manage Change", "parentfield": "approver"},
+			pluck="user",
+			order_by="idx asc",
+		)
 		return {
 			"approved": approved,
 			"reason": "submitted" if approved else "not_submitted",
 			"name": mc.name,
 			"ticket_id": mc.ticket_id,
-			"approver": mc.approver,
+			"approver": approvers,
 			"workflow_state": mc.get("workflow_state"),
 			"docstatus": mc.docstatus,
 			"pr_url": pr_url,

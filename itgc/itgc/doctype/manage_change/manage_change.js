@@ -11,4 +11,23 @@ frappe.ui.form.on("Manage Change", {
 			frm.set_df_property("erp_app", "options", ["", ...apps].join("\n"));
 		}
 	},
+
+	department(frm) {
+		// Mirror the selected department's HOD list into the read-only `approver`
+		// Table MultiSelect. Server-side validate() does the authoritative sync;
+		// this just keeps the form in sync live when the department changes.
+		frm.clear_table("approver");
+		if (!frm.doc.department) {
+			frm.refresh_field("approver");
+			return;
+		}
+		frappe.db
+			.get_doc("Manage Change Department", frm.doc.department)
+			.then((dept) => {
+				(dept.hod || []).forEach((row) => {
+					frm.add_child("approver", { user: row.user });
+				});
+				frm.refresh_field("approver");
+			});
+	},
 });

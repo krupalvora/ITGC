@@ -47,11 +47,10 @@
    "label": "Version Control URL"
   },
   {
-   "fetch_from": "department.hod",
    "fieldname": "approver",
-   "fieldtype": "Link",
+   "fieldtype": "Table MultiSelect",
    "label": "Approver",
-   "options": "User",
+   "options": "Manage Change HOD",
    "read_only": 1
   },
   {
