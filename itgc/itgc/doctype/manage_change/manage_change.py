@@ -20,6 +20,16 @@ REQUIRED_WORKFLOW_FILES = (
 # the itgc app, so itgc holds the canonical YAMLs.
 CANONICAL_WORKFLOW_SOURCE_APP = "itgc"
 
+# Default/sentinel value of `version_control_url` — an MC with this (or empty) is
+# "unbound" and never matches a real PR in the merge gate.
+UNSET_VERSION_CONTROL_URL = "Not Set"
+
+
+def _is_real_version_control_url(value):
+	"""True only for an actual PR URL (not blank / the 'Not Set' sentinel)."""
+	value = (value or "").strip()
+	return bool(value) and value.casefold() != UNSET_VERSION_CONTROL_URL.casefold()
+
 
 class ManageChange(Document):
 	def autoname(self):
@@ -31,6 +41,57 @@ class ManageChange(Document):
 
 	def validate(self):
 		self._sync_approver_from_department()
+		self._lock_version_control_url()
+
+	def _lock_version_control_url(self):
+		"""Bind a Manage Change to a single PR, permanently.
+
+		`version_control_url` is editable after submit (allow_on_submit) so devs
+		can attach the PR once it's raised. Without guards that lets an approved
+		MC be repointed at a different PR — or reused across many PRs — bypassing
+		the gate. So:
+
+		  1. Freeze: once a real URL is saved, it can never be changed or cleared.
+		     To gate a different PR you must raise a NEW Manage Change.
+		  2. Uniqueness: a given PR URL may be linked to only one active
+		     (non-cancelled) Manage Change, so one PR maps to exactly one approval.
+		"""
+		current = (self.version_control_url or "").strip()
+		current_is_real = _is_real_version_control_url(current)
+
+		before = self.get_doc_before_save()
+		old = (before.version_control_url or "").strip() if before else ""
+		old_is_real = _is_real_version_control_url(old)
+
+		# 1. Immutable once bound — blocks repointing and clear-then-rebind.
+		if old_is_real and current != old:
+			frappe.throw(
+				_(
+					"Version Control URL is locked to {0} and cannot be changed once set. "
+					"Raise a new Manage Change to gate a different PR."
+				).format(frappe.bold(old)),
+				title=_("Version Control URL Locked"),
+			)
+
+		# 2. One PR ↔ one Manage Change (checked only when (re)binding a real URL).
+		if current_is_real and current != old:
+			existing = frappe.db.get_value(
+				"Manage Change",
+				{
+					"version_control_url": current,
+					"name": ["!=", self.name],
+					"docstatus": ["<", 2],
+				},
+				"name",
+			)
+			if existing:
+				frappe.throw(
+					_(
+						"Version Control URL {0} is already linked to Manage Change {1}. "
+						"Each PR can map to only one Manage Change."
+					).format(frappe.bold(current), frappe.bold(existing)),
+					title=_("Duplicate Version Control URL"),
+				)
 
 	def _sync_approver_from_department(self):
 		# Approver is a read-only Table MultiSelect that mirrors the HOD list of
