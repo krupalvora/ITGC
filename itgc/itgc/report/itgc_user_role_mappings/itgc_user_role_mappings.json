@@ -22,49 +22,10 @@
  "report_type": "Script Report",
  "roles": [
   {
-   "role": "Projects User"
-  },
-  {
-   "role": "Projects Manager"
-  },
-  {
-   "role": "Employee Self Service"
-  },
-  {
-   "role": "Stock - Warehouse Manager"
-  },
-  {
-   "role": "Sales Manager"
-  },
-  {
-   "role": "Purchase User"
-  },
-  {
-   "role": "Stock User"
-  },
-  {
-   "role": "Item Manager"
-  },
-  {
-   "role": "Accounts Manager"
-  },
-  {
-   "role": "SolarSquare SOH"
-  },
-  {
-   "role": "Solar Square Budget"
+   "role": "System Manager"
   },
   {
    "role": "Auditor"
-  },
-  {
-   "role": "AMC COM"
-  },
-  {
-   "role": "AMC SOH"
-  },
-  {
-   "role": "DCR Co-Ordinator"
   }
  ]
 }

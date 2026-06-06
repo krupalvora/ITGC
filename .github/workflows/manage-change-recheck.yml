@@ -4,6 +4,9 @@ name: Manage Change Recheck
 # `/recheck` on a PR. Useful when the original 15-minute poll window elapsed
 # before the dev updated the Manage Change with the PR URL.
 #
+# Setup & tokens (gate token, ITGC_BASE_URL, branch protection):
+#   see ../MANAGE_CHANGE_GATE.md
+#
 # Uses GitHub's rerun-failed-jobs API so the re-run is bound to the PR's head
 # commit — branch protection sees the updated status correctly. No PAT needed;
 # the default GITHUB_TOKEN with `actions: write` is sufficient.
@@ -20,9 +23,15 @@ jobs:
   recheck:
     name: Re-run manage-change-check
     runs-on: ubuntu-latest
+    # Only a comment on a PR (not a plain issue), starting with `/recheck`, AND
+    # from someone with write access to the repo. author_association is OWNER for
+    # the repo owner, MEMBER for org members, and COLLABORATOR for users granted
+    # write — anyone else (CONTRIBUTOR / FIRST_TIME_CONTRIBUTOR / NONE) is ignored,
+    # so a random PR commenter cannot trigger reruns against the gated branches.
     if: >
       github.event.issue.pull_request != null &&
-      startsWith(github.event.comment.body, '/recheck')
+      startsWith(github.event.comment.body, '/recheck') &&
+      contains(fromJson('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
 
     steps:
       - name: Re-run failed jobs of latest manage-change-check

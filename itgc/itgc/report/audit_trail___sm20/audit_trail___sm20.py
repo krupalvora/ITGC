@@ -1,8 +1,14 @@
 import frappe
 from frappe.query_builder import DocType
-from pypika import Query
-from frappe.utils import get_datetime
+from pypika import Order, Query
+from frappe.utils import cint, get_datetime
 from frappe.core.doctype.version.version import get_diff
+
+# Cap on the number of Version rows scanned/parsed per run. Each row is JSON the
+# report parses in Python, so an unbounded fetch over `tabVersion` can blow up
+# memory; this keeps the report responsive. Override via the "Row Limit" filter.
+DEFAULT_LIMIT = 2000
+MAX_LIMIT = 20000
 
 
 class VersionReport:
@@ -10,6 +16,11 @@ class VersionReport:
         self.filters = filters or {}
         self.version = DocType("Version")
         self.results = []
+
+    @property
+    def row_limit(self):
+        limit = cint(self.filters.get("limit")) or DEFAULT_LIMIT
+        return min(limit, MAX_LIMIT)
 
     def apply_filters(self, query):
         if user := self.filters.get("user"):
@@ -34,7 +45,10 @@ class VersionReport:
             self.version.owner.as_("user"),
             self.version.name.as_("version"),
         )
-        return self.apply_filters(query)
+        query = self.apply_filters(query)
+        # Newest first, and bound the scan so an unfiltered run can't fetch the
+        # entire Version table.
+        return query.orderby(self.version.creation, order=Order.desc).limit(self.row_limit)
 
     def fetch_versions(self):
         query = self.build_query()

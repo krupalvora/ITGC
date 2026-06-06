@@ -1,5 +1,9 @@
 name: Manage Change Approval Check
 
+# Setup & tokens — how to generate the gate token and configure
+# ITGC_GATE_TOKEN / ITGC_BASE_URL / branch protection:
+#   see ../MANAGE_CHANGE_GATE.md
+
 on:
   pull_request:
     branches:

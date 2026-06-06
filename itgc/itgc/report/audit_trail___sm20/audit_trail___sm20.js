@@ -40,5 +40,12 @@ frappe.query_reports["Audit Trail - SM20"] = {
 			fieldtype: "Check",
 			default: 1,
 		},
+		{
+			fieldname: "limit",
+			label: __("Row Limit"),
+			fieldtype: "Int",
+			default: 2000,
+			description: __("Max Version rows scanned (capped at 20000). Narrow the date range for more."),
+		},
 	],
 };

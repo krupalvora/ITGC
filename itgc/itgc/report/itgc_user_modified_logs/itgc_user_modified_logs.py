@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 DATE_FIELDS = {
 	"User Modified": "u.modified",
@@ -8,6 +9,8 @@ DATE_FIELDS = {
 	"Version Created": "v.creation",
 }
 DEFAULT_DATE_FIELD = "User Modified"
+DEFAULT_LIMIT = 2000
+MAX_LIMIT = 20000
 
 
 def execute(filters=None):
@@ -31,12 +34,18 @@ def execute(filters=None):
 	]
 
 	if filters.get("exclude_role"):
+		# Exclude changes made by ANY user who holds the excluded role. Using a
+		# NOT IN against the set of users who have the role is correct; a
+		# `T2.role != role` join would wrongly keep such users via their *other*
+		# role rows.
 		conditions.append(
-			"v.modified_by IN ("
-			"SELECT T1.name FROM `tabUser` T1 "
-			"JOIN `tabHas Role` T2 ON T1.name = T2.parent "
-			"WHERE T2.role != %(exclude_role)s)"
+			"v.modified_by NOT IN ("
+			"SELECT T2.parent FROM `tabHas Role` T2 "
+			"WHERE T2.parenttype = 'User' AND T2.role = %(exclude_role)s)"
 		)
+
+	# cint() guarantees an int, so inlining the limit is injection-safe.
+	limit = min(cint(filters.get("limit")) or DEFAULT_LIMIT, MAX_LIMIT)
 
 	where = " AND ".join(conditions)
 	query = f"""
@@ -54,6 +63,7 @@ def execute(filters=None):
 		INNER JOIN `tabVersion` AS v ON v.docname = u.name
 		WHERE {where}
 		ORDER BY v.modified DESC
+		LIMIT {limit}
 	"""
 	return get_columns(), frappe.db.sql(query, filters, as_dict=True)
 

@@ -29,5 +29,12 @@ frappe.query_reports["ITGC-GRN Approved_By"] = {
 			default: "Complete",
 			description: __("Matched against the version data via LIKE. Leave empty to skip."),
 		},
+		{
+			fieldname: "limit",
+			label: __("Row Limit"),
+			fieldtype: "Int",
+			default: 2000,
+			description: __("Max rows returned (capped at 20000). Narrow the date range for more."),
+		},
 	],
 };

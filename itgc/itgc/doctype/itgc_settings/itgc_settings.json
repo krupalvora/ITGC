@@ -13,7 +13,7 @@
   "manage_change_api_section",
   "enable_change_management",
   "notify_manage_change",
-  "protect_manage_change_status_endpoint",
+  "allow_public_manage_change_status_endpoint",
   "manage_change_status_endpoint_token",
   "manage_change_api_help"
  ],
@@ -25,12 +25,14 @@
   },
   {
    "default": "0",
-   "fieldname": "protect_manage_change_status_endpoint",
+   "description": "OFF (default, recommended): the status API requires the token below \u2014 callers without a valid token get 401. ON: the API is public (no token). Only enable for a fully private/internal endpoint.",
+   "fieldname": "allow_public_manage_change_status_endpoint",
    "fieldtype": "Check",
-   "label": "Require Token for Manage Change Status API"
+   "label": "Allow Public Manage Change Status API (no token)"
   },
   {
-   "depends_on": "eval:doc.protect_manage_change_status_endpoint",
+   "depends_on": "eval:!doc.allow_public_manage_change_status_endpoint",
+   "description": "Required unless the API is public. Send this value in the X-ITGC-Token request header. Store it as the ITGC_GATE_TOKEN secret in the GitHub workflow.",
    "fieldname": "manage_change_status_endpoint_token",
    "fieldtype": "Password",
    "label": "Manage Change Status API Token"
@@ -38,7 +40,7 @@
   {
    "fieldname": "manage_change_api_help",
    "fieldtype": "HTML",
-   "options": "<p>Used by the GitHub Actions merge gate. Endpoint: <code>itgc.api.manage_change_gate.check_pr_approval</code>. When the flag above is enabled, callers must send the token in the <code>X-ITGC-Token</code> header; otherwise the endpoint is public (read-only \u2014 it only reveals approval state for a given PR URL + branch).</p>"
+   "options": "<p>Used by the GitHub Actions merge gate. Endpoint: <code>itgc.api.manage_change_gate.check_pr_approval</code>. The endpoint is <b>token-protected by default</b> (fail-closed): callers must send the token in the <code>X-ITGC-Token</code> header, and if no token is configured every call is rejected. Tick <i>Allow Public\u2026</i> above only if you intend the endpoint to be reachable without a token.</p><p><b>Generate a token:</b> run <code>openssl rand -hex 32</code> (or <code>python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"</code>), paste it above, and store the same value as the GitHub repo secret <code>ITGC_GATE_TOKEN</code>. Full setup steps: <code>.github/MANAGE_CHANGE_GATE.md</code> in the itgc app.</p>"
   },
   {
    "fieldname": "manage_change_tab",

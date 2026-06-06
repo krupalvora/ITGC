@@ -16,7 +16,7 @@
  "name": "ITGC-User-Role-Permission",
  "owner": "Administrator",
  "prepared_report": 0,
- "query": "SELECT\n    p.parent AS doctype,\n    p.parent AS role,\n    p.if_owner,\n    p.permlevel,\n    p.read,\n    p.write,\n    \n    p.create,\n    p.delete,\n    p.submit,\n    p.cancel,\n    p.amend,\n    \n    p.report,\n    p.export,\n    p.import,\n    \n    p.share,\n    p.print,\n    p.email\n    \nFROM `tabCustom DocPerm` p\nORDER BY p.parent, p.role;",
+ "query": "SELECT\n    p.parent AS doctype,\n    p.role AS role,\n    p.if_owner,\n    p.permlevel,\n    p.read,\n    p.write,\n    \n    p.create,\n    p.delete,\n    p.submit,\n    p.cancel,\n    p.amend,\n    \n    p.report,\n    p.export,\n    p.import,\n    \n    p.share,\n    p.print,\n    p.email\n    \nFROM `tabCustom DocPerm` p\nORDER BY p.parent, p.role\nLIMIT 20000;",
  "ref_doctype": "User",
  "report_name": "ITGC-User-Role-Permission",
  "report_type": "Query Report",

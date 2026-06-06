@@ -35,5 +35,12 @@ frappe.query_reports["ITGC-User-Role-Mappings"] = {
 			options: "Role",
 			description: __("Restrict to a single role. Leave empty for all."),
 		},
+		{
+			fieldname: "limit",
+			label: __("Row Limit"),
+			fieldtype: "Int",
+			default: 5000,
+			description: __("Max rows returned (capped at 50000). Narrow with the Role filter for more."),
+		},
 	],
 };

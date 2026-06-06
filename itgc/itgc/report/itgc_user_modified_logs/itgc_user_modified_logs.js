@@ -30,5 +30,12 @@ frappe.query_reports["ITGC-User Modified Logs"] = {
 			default: "System Manager",
 			description: __("Hide changes made by users with this role. Leave empty for all."),
 		},
+		{
+			fieldname: "limit",
+			label: __("Row Limit"),
+			fieldtype: "Int",
+			default: 2000,
+			description: __("Max rows returned (capped at 20000). Narrow the date range for more."),
+		},
 	],
 };

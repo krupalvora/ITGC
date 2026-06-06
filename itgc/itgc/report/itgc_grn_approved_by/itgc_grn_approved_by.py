@@ -1,5 +1,6 @@
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 DATE_FIELDS = {
 	"PR Created": "pr.creation",
@@ -8,6 +9,8 @@ DATE_FIELDS = {
 	"Version Modified": "version.modified",
 }
 DEFAULT_DATE_FIELD = "PR Created"
+DEFAULT_LIMIT = 2000
+MAX_LIMIT = 20000
 
 
 def execute(filters=None):
@@ -29,6 +32,9 @@ def execute(filters=None):
 		conditions.append("version.data LIKE %(workflow_state_pattern)s")
 		filters["workflow_state_pattern"] = f"%{filters['workflow_state_keyword']}%"
 
+	# cint() guarantees an int, so inlining the limit is injection-safe.
+	limit = min(cint(filters.get("limit")) or DEFAULT_LIMIT, MAX_LIMIT)
+
 	where = " AND ".join(conditions)
 	query = f"""
 		SELECT
@@ -41,7 +47,8 @@ def execute(filters=None):
 		FROM `tabVersion` version
 		INNER JOIN `tabPurchase Receipt` pr ON pr.name = version.docname
 		WHERE {where}
-		ORDER BY pr.modified ASC
+		ORDER BY pr.modified DESC
+		LIMIT {limit}
 	"""
 	return get_columns(), frappe.db.sql(query, filters, as_dict=True)
 

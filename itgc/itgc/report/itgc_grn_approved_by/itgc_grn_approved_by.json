@@ -22,16 +22,10 @@
  "report_type": "Script Report",
  "roles": [
   {
-   "role": "All"
-  },
-  {
    "role": "System Manager"
   },
   {
-   "role": "Employee Self Service"
-  },
-  {
-   "role": "Bulk Export"
+   "role": "Auditor"
   }
  ]
 }

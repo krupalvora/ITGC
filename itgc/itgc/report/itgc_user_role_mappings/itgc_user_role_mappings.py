@@ -1,8 +1,11 @@
 import frappe
 from frappe import _
+from frappe.utils import cint
 
 DATE_FIELDS = {"User Created": "T1.creation", "User Modified": "T1.modified"}
 DEFAULT_DATE_FIELD = "User Created"
+DEFAULT_LIMIT = 5000
+MAX_LIMIT = 50000
 
 
 def execute(filters=None):
@@ -23,6 +26,9 @@ def execute(filters=None):
 	if filters.get("role"):
 		conditions.append("T2.role = %(role)s")
 
+	# cint() guarantees an int, so inlining the limit is injection-safe.
+	limit = min(cint(filters.get("limit")) or DEFAULT_LIMIT, MAX_LIMIT)
+
 	where = " AND ".join(conditions)
 	query = f"""
 		SELECT
@@ -32,6 +38,8 @@ def execute(filters=None):
 		FROM `tabUser` T1
 		LEFT JOIN `tabHas Role` T2 ON T1.name = T2.parent
 		WHERE {where}
+		ORDER BY T1.name
+		LIMIT {limit}
 	"""
 	return get_columns(), frappe.db.sql(query, filters, as_dict=True)
 

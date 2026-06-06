@@ -22,10 +22,11 @@ NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM, CREATE_ROLE_PROFILE
 
 class ManageAccess(Document):
 	def before_insert(self):
-		# Requester is always the creating user; read-only in the form, enforced
-		# here too since this is the access system of record.
-		if not self.user:
-			self.user = frappe.session.user
+		# Requester is always the creating user. This is the access system of
+		# record, so we ALWAYS overwrite server-side (never trust a client-supplied
+		# value) — even though the field is read-only in the form, the API path
+		# could otherwise be used to spoof the requester.
+		self.user = frappe.session.user
 
 		# Default the subject to the requester for the self-oriented types. New User /
 		# Disable User target someone else; Change Doctype Permission has no subject.
