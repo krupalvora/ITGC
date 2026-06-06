@@ -26,10 +26,18 @@ frappe.ui.form.on("Manage Access", {
 		fetch_current_perms(frm);
 	},
 
+	target_role_profile(frm) {
+		prefill_profile_roles(frm);
+	},
+
 	request_type(frm) {
 		// Clear fields that no longer apply so hidden values don't get submitted.
 		frm.set_value("role", null);
 		frm.set_value("role_profile", null);
+		frm.set_value("new_role_profile_name", null);
+		frm.set_value("target_role_profile", null);
+		frm.clear_table("profile_roles");
+		frm.refresh_field("profile_roles");
 
 		// No-subject types (New User, Disable User, Change Doctype Permission) -> blank.
 		// The remaining self-oriented types default to the current user (still editable).
@@ -69,14 +77,43 @@ function fetch_current_perms(frm) {
 	});
 }
 
+function prefill_profile_roles(frm) {
+	// On selecting an existing Role Profile to modify, load its current roles into the
+	// table so the admin edits from the real state (submit replaces the profile's roles).
+	if (frm.doc.request_type !== "Modify Role Profile" || frm.doc.docstatus !== 0) {
+		return;
+	}
+	if (!frm.doc.target_role_profile) {
+		frm.clear_table("profile_roles");
+		frm.refresh_field("profile_roles");
+		return;
+	}
+	frappe.call({
+		method: "itgc.itgc.doctype.manage_access.manage_access.get_role_profile_roles",
+		args: { role_profile: frm.doc.target_role_profile },
+		callback(r) {
+			if (!r.message) {
+				return;
+			}
+			frm.clear_table("profile_roles");
+			r.message.forEach((row) => {
+				frm.add_child("profile_roles", { role: row.role });
+			});
+			frm.refresh_field("profile_roles");
+		},
+	});
+}
+
 function restrict_request_type_options(frm) {
-	// "Change Doctype Permission" is a System-Manager-only action.
+	// "Change Doctype Permission" and the Role Profile management types are
+	// System-Manager-only actions.
 	if (frappe.user_roles.includes("System Manager")) {
 		return;
 	}
+	const sm_only = ["Change Doctype Permission", "Create Role Profile", "Modify Role Profile"];
 	const options = (frm.fields_dict.request_type.df.options || "")
 		.split("\n")
-		.filter((opt) => opt !== "Change Doctype Permission");
+		.filter((opt) => !sm_only.includes(opt));
 	frm.set_df_property("request_type", "options", options.join("\n"));
 }
 

@@ -38,7 +38,11 @@
   "perm_export",
   "perm_share",
   "previous_permission_section",
-  "previous_permission"
+  "previous_permission",
+  "manage_role_profile_tab",
+  "new_role_profile_name",
+  "target_role_profile",
+  "profile_roles"
  ],
  "fields": [
   {
@@ -72,7 +76,7 @@
    "fieldname": "request_type",
    "fieldtype": "Select",
    "label": "Request Type",
-   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile\nChange Doctype Permission",
+   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile\nChange Doctype Permission\nCreate Role Profile\nModify Role Profile",
    "reqd": 1
   },
   {
@@ -279,6 +283,37 @@
    "options": "JSON",
    "permlevel": 1,
    "read_only": 1
+  },
+  {
+   "depends_on": "eval:frappe.user_roles.includes('System Manager') && ['Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
+   "fieldname": "manage_role_profile_tab",
+   "fieldtype": "Tab Break",
+   "label": "Manage Role Profile"
+  },
+  {
+   "depends_on": "eval:doc.request_type=='Create Role Profile'",
+   "description": "Name for the new Role Profile. A Role Profile record with this name is created in the backend on submit.",
+   "fieldname": "new_role_profile_name",
+   "fieldtype": "Data",
+   "label": "New Role Profile Name",
+   "mandatory_depends_on": "eval:doc.request_type=='Create Role Profile'"
+  },
+  {
+   "depends_on": "eval:doc.request_type=='Modify Role Profile'",
+   "description": "The existing Role Profile to modify. Its current roles load below; on submit they are replaced with the table, and all users assigned this profile are re-synced.",
+   "fieldname": "target_role_profile",
+   "fieldtype": "Link",
+   "label": "Role Profile to Modify",
+   "mandatory_depends_on": "eval:doc.request_type=='Modify Role Profile'",
+   "options": "Role Profile"
+  },
+  {
+   "depends_on": "eval:['Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
+   "fieldname": "profile_roles",
+   "fieldtype": "Table",
+   "label": "Roles",
+   "mandatory_depends_on": "eval:['Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
+   "options": "Has Role"
   }
  ],
  "index_web_pages_for_search": 1,

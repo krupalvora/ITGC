@@ -13,9 +13,12 @@ DISABLE_USER = "Disable User"
 REVOKE_ROLE = "Revoke Role"
 REVOKE_ROLE_PROFILE = "Revoke Role Profile"
 CHANGE_DOC_PERM = "Change Doctype Permission"  # System-Manager-only doc-perm change
+CREATE_ROLE_PROFILE = "Create Role Profile"  # System-Manager-only: create a Role Profile
+MODIFY_ROLE_PROFILE = "Modify Role Profile"  # System-Manager-only: edit a Role Profile's roles
 
-# Types that do not act on a subject user (request_for).
-NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM)
+# Types that do not act on a subject user (request_for). Create/Modify Role Profile
+# act on the Role Profile itself; core's update_all_users() re-syncs assigned users.
+NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM, CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE)
 
 class ManageAccess(Document):
 	def before_insert(self):
@@ -71,6 +74,25 @@ class ManageAccess(Document):
 				frappe.throw(_("To change permissions, select both Doctype and Role."))
 			return
 
+		# Create / Modify Role Profile: System-Manager-only, acts on the Role Profile
+		# itself (no subject user). Requires at least one role row.
+		if self.request_type in (CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE):
+			frappe.only_for("System Manager")
+			if not self.profile_roles:
+				frappe.throw(_("Add at least one Role to the Role Profile."))
+			if self.request_type == CREATE_ROLE_PROFILE:
+				if not self.new_role_profile_name:
+					frappe.throw(_("Enter a name for the new Role Profile."))
+				if frappe.db.exists("Role Profile", self.new_role_profile_name):
+					frappe.throw(
+						_("Role Profile {0} already exists. Use 'Modify Role Profile' instead.").format(
+							frappe.bold(self.new_role_profile_name)
+						)
+					)
+			elif not self.target_role_profile:
+				frappe.throw(_("Select the Role Profile to modify."))
+			return
+
 		if not self.request_for:
 			frappe.throw(_("Please select the user in 'For User'."))
 
@@ -96,6 +118,8 @@ class ManageAccess(Document):
 			DISABLE_USER: self.apply_disable_user,
 			REVOKE_ROLE: self.apply_revoke_role,
 			REVOKE_ROLE_PROFILE: self.apply_revoke_role_profile,
+			CREATE_ROLE_PROFILE: self.apply_create_role_profile,
+			MODIFY_ROLE_PROFILE: self.apply_modify_role_profile,
 		}
 		handler = handlers.get(self.request_type)
 		if not handler:
@@ -137,6 +161,25 @@ class ManageAccess(Document):
 		user = self.get_target_doc()
 		user.enabled = 0
 		user.save()
+
+	def apply_create_role_profile(self):
+		# Create the real Role Profile record. Its roles come from the profile_roles table.
+		rp = frappe.new_doc("Role Profile")
+		rp.role_profile = self.new_role_profile_name
+		for r in self.profile_roles:
+			rp.append("roles", {"role": r.role})
+		rp.flags.ignore_permissions = True
+		rp.insert()
+
+	def apply_modify_role_profile(self):
+		# Replace the profile's roles with the table; saving fires core's on_update ->
+		# update_all_users(), which re-syncs roles onto every user assigned this profile.
+		rp = frappe.get_doc("Role Profile", self.target_role_profile)
+		rp.set("roles", [])
+		for r in self.profile_roles:
+			rp.append("roles", {"role": r.role})
+		rp.flags.ignore_permissions = True
+		rp.save()
 
 	# Maps Manage Access checkbox fields -> Custom DocPerm permission properties.
 	DOC_PERM_RIGHTS = {
@@ -219,3 +262,20 @@ def get_current_doc_perm(document_type, perm_role, permission_level=0):
 		("if_owner" if ptype == "if_owner" else f"perm_{ptype}"): value
 		for ptype, value in snapshot.items()
 	}
+
+
+@frappe.whitelist()
+def get_role_profile_roles(role_profile):
+	"""Form helper: a Role Profile's current roles, for prefilling the modify table.
+
+	So the admin edits from the real current state and submitting doesn't silently
+	drop roles they didn't intend to remove.
+	"""
+	frappe.only_for("System Manager")
+	roles = frappe.get_all(
+		"Has Role",
+		filters={"parent": role_profile, "parenttype": "Role Profile"},
+		fields=["role"],
+		order_by="idx asc",
+	)
+	return [{"role": r.role} for r in roles]
