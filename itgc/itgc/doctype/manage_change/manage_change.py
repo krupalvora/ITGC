@@ -43,6 +43,14 @@ class ManageChange(Document):
 		self._sync_approver_from_department()
 		self._lock_version_control_url()
 
+	def before_update_after_submit(self):
+		# version_control_url is allow_on_submit, so it's edited on an already
+		# submitted doc. Frappe routes such edits through update_after_submit and
+		# does NOT call validate() — so the binding guard in validate() never runs
+		# post-submit, letting an approved MC be repointed at a different PR. Re-run
+		# the guard here so the freeze/uniqueness rules also apply after submit.
+		self._lock_version_control_url()
+
 	def _lock_version_control_url(self):
 		"""Bind a Manage Change to a single PR, permanently.
 

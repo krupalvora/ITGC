@@ -15,6 +15,10 @@ class TestManageChange(FrappeTestCase):
 	workflow-file check; the freeze/uniqueness rules run in validate() regardless
 	of docstatus. ignore_mandatory/ignore_links lets us skip the unrelated reqd
 	master links (department/branch/etc.). FrappeTestCase rolls back per test.
+
+	The post-submit case is covered separately by faking docstatus=1 (the URL is
+	allow_on_submit, so real edits happen after submit via update_after_submit,
+	which skips validate()).
 	"""
 
 	def _new_mc(self, url=None):
@@ -60,6 +64,28 @@ class TestManageChange(FrappeTestCase):
 		doc.description = "edited"
 		doc.save(ignore_permissions=True)  # should not raise
 		self.assertEqual(doc.version_control_url, PR1)
+
+	def test_url_frozen_after_submit_edit(self):
+		"""The freeze must hold on a SUBMITTED doc too.
+
+		allow_on_submit edits route through update_after_submit, which skips
+		validate() — so the guard must also run in before_update_after_submit.
+		First post-submit attach (Not Set -> PR1) is allowed; repointing is not.
+		"""
+		doc = self._new_mc()  # docstatus 0, "Not Set"
+		# Fake an approved/submitted MC without before_submit's workflow-file check.
+		frappe.db.set_value("Manage Change", doc.name, "docstatus", 1, update_modified=False)
+		doc.reload()
+
+		# First post-submit attach: Not Set -> PR1 is fine.
+		doc.version_control_url = PR1
+		doc.save(ignore_permissions=True)
+		self.assertEqual(doc.version_control_url, PR1)
+
+		# Repointing the submitted MC at another PR must be blocked.
+		doc.version_control_url = PR2
+		with self.assertRaises(frappe.ValidationError):
+			doc.save(ignore_permissions=True)
 
 	def test_cancelled_record_does_not_block_reuse(self):
 		"""A cancelled (docstatus 2) MC's URL is freed for a new binding."""
