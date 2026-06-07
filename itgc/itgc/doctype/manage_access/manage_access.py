@@ -310,6 +310,40 @@ def get_current_doc_perm(document_type, perm_role, permission_level=0):
 
 
 @frappe.whitelist()
+@frappe.validate_and_sanitize_search_inputs
+def users_without_role_profile(doctype, txt, searchfield, start, page_len, filters):
+	"""Link query for the 'New User' flow: enabled System Users with no Role Profile yet.
+
+	`role_profile_name` is a permlevel-1 field on User, so a client-side filter on it
+	(applied via set_query) silently returns nothing for a requester who lacks
+	permlevel-1 read access — which hid the just-created user from the 'For User'
+	dropdown. Running the filter server-side with ignore_permissions evaluates it
+	correctly regardless of the requester's field-level access.
+	"""
+	conditions = {
+		"enabled": 1,
+		"user_type": "System User",
+		"role_profile_name": ["is", "not set"],
+		"name": ["not in", ("Administrator", "Guest")],
+	}
+	or_filters = None
+	if txt:
+		or_filters = {"name": ["like", f"%{txt}%"], "full_name": ["like", f"%{txt}%"]}
+
+	return frappe.get_list(
+		"User",
+		filters=conditions,
+		or_filters=or_filters,
+		fields=["name", "full_name"],
+		start=start,
+		page_length=page_len,
+		order_by="name asc",
+		as_list=True,
+		ignore_permissions=True,
+	)
+
+
+@frappe.whitelist()
 def get_role_profile_roles(role_profile):
 	"""Form helper: a Role Profile's current roles, for prefilling the modify table.
 

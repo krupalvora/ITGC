@@ -128,9 +128,13 @@ function restrict_request_type_options(frm) {
 function set_request_for_query(frm) {
 	frm.set_query("request_for", () => {
 		// "New User" requests may only target users that have no Role Profile yet.
-		// Other types (e.g. Disable User) may target any user.
+		// role_profile_name is a permlevel-1 field on User, so a client-side filter
+		// returns nothing for a requester without permlevel-1 access (hiding the new
+		// user). Evaluate the rule server-side instead. Other types target any user.
 		if (frm.doc.request_type === "New User") {
-			return { filters: { role_profile_name: ["is", "not set"] } };
+			return {
+				query: "itgc.itgc.doctype.manage_access.manage_access.users_without_role_profile",
+			};
 		}
 		return {};
 	});
