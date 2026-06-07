@@ -57,17 +57,26 @@ class ITGCSettings(Document):
 		if previous == current:
 			return
 
-		if previous and frappe.db.exists("User", previous):
-			frappe.get_doc("User", previous).remove_roles(ACCESS_MANAGER_ROLE)
+		# Changing the Access Manager here IS a sanctioned access change, but it
+		# saves the User doc (add/remove_roles) — which the access_guard lockdown
+		# would otherwise block once Manage Access is enabled. Mark this as the
+		# Manage Access writer so the guard lets the role sync through, exactly as
+		# the Manage Access apply path does.
+		frappe.flags.in_manage_access = True
+		try:
+			if previous and frappe.db.exists("User", previous):
+				frappe.get_doc("User", previous).remove_roles(ACCESS_MANAGER_ROLE)
 
-		if current and frappe.db.exists("User", current):
-			# Pass the new manager explicitly so the User validate hook re-asserts
-			# the role after Frappe's role-profile sync strips it on save.
-			frappe.flags.itgc_access_manager = current
-			try:
-				frappe.get_doc("User", current).add_roles(ACCESS_MANAGER_ROLE)
-			finally:
-				frappe.flags.itgc_access_manager = False
+			if current and frappe.db.exists("User", current):
+				# Pass the new manager explicitly so the User validate hook re-asserts
+				# the role after Frappe's role-profile sync strips it on save.
+				frappe.flags.itgc_access_manager = current
+				try:
+					frappe.get_doc("User", current).add_roles(ACCESS_MANAGER_ROLE)
+				finally:
+					frappe.flags.itgc_access_manager = False
+		finally:
+			frappe.flags.in_manage_access = False
 
 
 @frappe.whitelist()
