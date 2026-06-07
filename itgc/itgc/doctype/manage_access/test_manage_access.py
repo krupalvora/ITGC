@@ -81,3 +81,67 @@ class TestManageAccess(FrappeTestCase):
 		self.assertIn("if_owner", snap)
 		for value in snap.values():
 			self.assertIn(value, (0, 1))
+
+	# ----------------------------------------------------- approver routing
+	def _approver_users(self, doc):
+		return [row.user for row in doc.approver]
+
+	def test_approver_synced_from_department(self):
+		"""The department's Access Managers become the request's approvers.
+
+		Uses Guest (never the test session user) as the department approver so the
+		result reflects a pure department sync, not the requester escalation path.
+		"""
+		dept = _make_department("ITGC-Test-Dept-A", ["Guest"])
+		doc = self._new_request(
+			request_type="Request Role", role=TEST_ROLE, department=dept
+		)
+		doc.insert(ignore_permissions=True)
+		self.assertEqual(self._approver_users(doc), ["Guest"])
+
+	def test_no_department_escalates_to_global_access_manager(self):
+		"""With no department, the global Access Manager is the fallback approver."""
+		_set_global_access_manager("Administrator")
+		doc = self._new_request(request_type="Request Role", role=TEST_ROLE)
+		doc.insert(ignore_permissions=True)
+		self.assertEqual(self._approver_users(doc), ["Administrator"])
+
+	def test_requester_only_department_escalates_to_fallback(self):
+		"""If the requester is the department's sole approver, escalate so the
+		request still has someone (other than the requester) who can approve."""
+		_set_global_access_manager("Administrator")
+		dept = _make_department("ITGC-Test-Dept-B", [frappe.session.user])
+		doc = self._new_request(
+			request_type="Request Role", role=TEST_ROLE, department=dept
+		)
+		doc.insert(ignore_permissions=True)
+		# The global Access Manager (Administrator) is appended as the fallback.
+		self.assertIn("Administrator", self._approver_users(doc))
+
+	def test_approver_resynced_on_save(self):
+		"""Changing the department re-derives the approver list on the next save."""
+		dept_a = _make_department("ITGC-Test-Dept-C", ["Administrator"])
+		dept_b = _make_department("ITGC-Test-Dept-D", ["Guest"])
+		doc = self._new_request(
+			request_type="Request Role", role=TEST_ROLE, department=dept_a
+		)
+		doc.insert(ignore_permissions=True)
+		self.assertEqual(self._approver_users(doc), ["Administrator"])
+		doc.department = dept_b
+		doc.save(ignore_permissions=True)
+		self.assertEqual(self._approver_users(doc), ["Guest"])
+
+
+def _make_department(name, users):
+	if frappe.db.exists("Manage Access Department", name):
+		frappe.delete_doc("Manage Access Department", name, force=True)
+	dept = frappe.new_doc("Manage Access Department")
+	dept.name1 = name
+	for user in users:
+		dept.append("approver", {"user": user})
+	dept.insert(ignore_permissions=True)
+	return dept.name
+
+
+def _set_global_access_manager(user):
+	frappe.db.set_single_value("ITGC Settings", "access_manager", user)

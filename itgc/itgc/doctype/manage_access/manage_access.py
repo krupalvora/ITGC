@@ -35,6 +35,43 @@ class ManageAccess(Document):
 
 	def validate(self):
 		self.validate_request()
+		self._sync_approver_from_department()
+
+	def _sync_approver_from_department(self):
+		"""Populate the read-only `approver` table that the workflow gates approval on.
+
+		The requester picks a Department; its Access Managers (from the Manage
+		Access Department mapping) become this request's approvers. The workflow
+		transition then narrows the *identity* to exactly these users via
+		`frappe.session.user in [d.user for d in doc.approver]`.
+
+		SoD / escalation: `allow_self_approval` is off on the workflow, so a
+		requester listed among their department's approvers still cannot approve
+		their own request. If that would leave nobody able to approve (the
+		requester is the department's only approver, or no department is set), we
+		append the global Access Manager from ITGC Settings as a fallback so the
+		request is never stuck.
+		"""
+		self.set("approver", [])
+
+		users = []
+		if self.department:
+			users = frappe.get_all(
+				"Manage Access Approver",
+				filters={"parent": self.department, "parenttype": "Manage Access Department"},
+				pluck="user",
+				order_by="idx asc",
+			)
+
+		requester = self.user or frappe.session.user
+		# Is there at least one approver who isn't the requester? If not, escalate.
+		if not any(u and u != requester for u in users):
+			fallback = frappe.db.get_single_value("ITGC Settings", "access_manager")
+			if fallback:
+				users = list(users) + [fallback]
+
+		for user in dict.fromkeys(u for u in users if u):  # de-dup, preserve order
+			self.append("approver", {"user": user})
 
 	def before_submit(self):
 		# Snapshot the role's current permissions on this doctype for the audit

@@ -11,6 +11,21 @@ class ITGCSettings(Document):
 	def on_update(self):
 		self.sync_access_manager_role()
 		self.sync_change_management_workflow()
+		self.sync_manage_access_workflow()
+
+	def sync_manage_access_workflow(self):
+		"""Keep the Manage Access approval workflow's active state in sync.
+
+		The single "Enable Manage Access" flag drives both the access-master
+		lockdown (see itgc.overrides.access_guard) and this maker-checker approval
+		workflow, so turning the feature on routes every request through approval.
+
+		Enforced on every save (not just on change) so the workflow and flag are
+		self-healing if they ever drift apart; the call is a no-op when in sync.
+		"""
+		from itgc.install import set_manage_access_workflow_active
+
+		set_manage_access_workflow_active(bool(self.enable_manage_access))
 
 	def sync_change_management_workflow(self):
 		"""Keep the Manage Change approval workflow's active state in sync.

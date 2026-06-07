@@ -116,13 +116,14 @@ after_install = "itgc.install.after_install"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+# Restrict Manage Access requests to the requester, their approvers, and admins.
+permission_query_conditions = {
+	"Manage Access": "itgc.overrides.manage_access_perms.get_permission_query_conditions",
+}
+
+has_permission = {
+	"Manage Access": "itgc.overrides.manage_access_perms.has_permission",
+}
 
 # DocType Class
 # ---------------

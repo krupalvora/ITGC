@@ -15,6 +15,9 @@
   "role",
   "role_profile",
   "amended_from",
+  "approval_section",
+  "department",
+  "approver",
   "change_doc_perm_tab",
   "document_type",
   "perm_role",
@@ -113,6 +116,26 @@
    "fieldname": "request_for_role_tab",
    "fieldtype": "Tab Break",
    "label": "Request for Role"
+  },
+  {
+   "fieldname": "approval_section",
+   "fieldtype": "Section Break",
+   "label": "Approval Routing"
+  },
+  {
+   "description": "Department whose Access Managers approve this request. Leave blank to route to the global Access Manager. Used only while the Manage Access approval workflow is active.",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "label": "Department",
+   "options": "Manage Access Department"
+  },
+  {
+   "description": "Users who can approve this request. Synced from the selected Department on save; the global Access Manager is added as a fallback so a request is never left without an approver.",
+   "fieldname": "approver",
+   "fieldtype": "Table MultiSelect",
+   "label": "Approvers",
+   "options": "Manage Access Approver",
+   "read_only": 1
   },
   {
    "depends_on": "eval:frappe.user_roles.includes('System Manager') && doc.request_type=='Change Doctype Permission'",

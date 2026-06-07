@@ -38,6 +38,41 @@ MC_WORKFLOW_TRANSITIONS = (
 	("Rejected", "Resubmit", "Pending", MC_REQUESTER_ROLE, 1, None),
 )
 
+# --- Manage Access governance ----------------------------------------------
+# Anyone may RAISE a Manage Access request (the "All" role is held by every
+# user); only the request's listed approvers may approve it. Visibility of other
+# people's requests is restricted by the permission hooks in
+# `itgc.overrides.manage_access_perms`, not by this docperm.
+MA_REQUESTER_ROLE = "All"
+MA_REQUESTER_RIGHTS = ("read", "write", "create")
+
+# Frappe Workflow that drives Manage Access approval. Created (disabled) on
+# install and only activated when ITGC Settings -> "Enable Manage Access" is on
+# (the same flag that turns on the access-master lockdown).
+MA_WORKFLOW_NAME = "ITGC Manage Access Approval"
+
+# Capability to act on the approval is the access-granting role; the per-document
+# identity is narrowed by this condition to the users in the `approver` table
+# (the department's Access Managers, or the global Access Manager fallback).
+MA_APPROVER_CONDITION = "frappe.session.user in [d.user for d in doc.approver]"
+# Only the requester may resubmit their own rejected request.
+MA_OWNER_CONDITION = "doc.owner == frappe.session.user"
+
+# (state, doc_status, allow_edit_role)
+MA_WORKFLOW_STATES = (
+	("Pending", "0", MA_REQUESTER_ROLE),
+	("Approved", "1", None),
+	("Rejected", "0", MA_REQUESTER_ROLE),
+)
+
+# (from_state, action, to_state, allowed_role, allow_self_approval, condition)
+MA_WORKFLOW_TRANSITIONS = (
+	("Pending", "Approve", "Approved", ACCESS_MANAGER_ROLE, 0, MA_APPROVER_CONDITION),
+	("Pending", "Reject", "Rejected", ACCESS_MANAGER_ROLE, 0, MA_APPROVER_CONDITION),
+	# Let the requester re-open their rejected request and send it back.
+	("Rejected", "Resubmit", "Pending", MA_REQUESTER_ROLE, 1, MA_OWNER_CONDITION),
+)
+
 # Roles created when the ITGC app is installed.
 # "ITGC Access Manager" is the access-granting role: its holders can grant/revoke
 # access (roles, doctype/module permissions, user permissions) to other users.
@@ -72,6 +107,7 @@ def after_install():
 	grant_manage_access_permissions()
 	grant_manage_change_permissions()
 	ensure_manage_change_workflow()
+	ensure_manage_access_workflow()
 
 
 def create_itgc_roles():
@@ -85,22 +121,33 @@ def create_itgc_roles():
 
 
 def grant_manage_access_permissions():
-	"""Let the ITGC Access Manager operate the Manage Access doctype.
+	"""Set up the Manage Access docperms for requester and approver.
 
-	Once the Manage Access feature is in place, holders of the access-granting
-	role need to use it. We grant permlevel-0 operational rights only, so the
-	System-Manager-only Change Doc Perm tab (permlevel 1) remains hidden.
+	Two roles operate the doctype at permlevel 0 (the System-Manager-only Change
+	Doc Perm tab is permlevel 1 and stays hidden from both):
+
+	  - Requester ("All"): anyone may RAISE a request — read / write / create, but
+	    NOT submit. Which requests a user can actually see is restricted by the
+	    permission hooks in `itgc.overrides.manage_access_perms`.
+	  - Approver (ITGC Access Manager): the operational rights needed to approve
+	    (submit) / reject (cancel) a request via the workflow.
 	"""
 	from frappe.permissions import add_permission, update_permission_property
 
 	if not frappe.db.exists("DocType", MANAGE_ACCESS_DOCTYPE):
 		return
-	if not frappe.db.exists("Role", ACCESS_MANAGER_ROLE):
-		return
 
-	add_permission(MANAGE_ACCESS_DOCTYPE, ACCESS_MANAGER_ROLE, 0)
-	for ptype in ACCESS_MANAGER_RIGHTS:
-		update_permission_property(MANAGE_ACCESS_DOCTYPE, ACCESS_MANAGER_ROLE, 0, ptype, 1)
+	# Requester — anyone can raise a request.
+	add_permission(MANAGE_ACCESS_DOCTYPE, MA_REQUESTER_ROLE, 0)
+	for ptype in MA_REQUESTER_RIGHTS:
+		update_permission_property(MANAGE_ACCESS_DOCTYPE, MA_REQUESTER_ROLE, 0, ptype, 1)
+
+	# Approver — only when the access-granting role exists.
+	if frappe.db.exists("Role", ACCESS_MANAGER_ROLE):
+		add_permission(MANAGE_ACCESS_DOCTYPE, ACCESS_MANAGER_ROLE, 0)
+		for ptype in ACCESS_MANAGER_RIGHTS:
+			update_permission_property(MANAGE_ACCESS_DOCTYPE, ACCESS_MANAGER_ROLE, 0, ptype, 1)
+
 	frappe.db.commit()
 
 
@@ -143,7 +190,9 @@ def ensure_manage_change_workflow():
 	# first. Idempotent — covers running this function standalone (e.g. on a site
 	# where the app was already installed) without first calling create_itgc_roles.
 	create_itgc_roles()
-	_ensure_workflow_masters()
+	_ensure_workflow_masters(
+		{s[0] for s in MC_WORKFLOW_STATES}, {t[1] for t in MC_WORKFLOW_TRANSITIONS}
+	)
 
 	if frappe.db.exists("Workflow", MC_WORKFLOW_NAME):
 		return
@@ -184,11 +233,8 @@ def ensure_manage_change_workflow():
 	frappe.db.commit()
 
 
-def _ensure_workflow_masters():
-	"""Create the Workflow State / Action Master records the workflow links to."""
-	states = {s[0] for s in MC_WORKFLOW_STATES}
-	actions = {t[1] for t in MC_WORKFLOW_TRANSITIONS}
-
+def _ensure_workflow_masters(states, actions):
+	"""Create the Workflow State / Action Master records a workflow links to."""
 	for state in states:
 		if not frappe.db.exists("Workflow State", state):
 			frappe.get_doc({"doctype": "Workflow State", "workflow_state_name": state}).insert(
@@ -213,6 +259,83 @@ def set_manage_change_workflow_active(is_active):
 		return False
 
 	wf = frappe.get_doc("Workflow", MC_WORKFLOW_NAME)
+	target = 1 if is_active else 0
+	if wf.is_active == target:
+		return False
+
+	wf.is_active = target
+	wf.save(ignore_permissions=True)
+	return True
+
+
+def ensure_manage_access_workflow():
+	"""Create the Manage Access approval workflow, disabled by default.
+
+	Ships with the app but stays inactive until an admin turns on ITGC Settings ->
+	"Enable Manage Access" (which also activates the access-master lockdown). Safe
+	to re-run: it no-ops once the workflow exists.
+	"""
+	if not frappe.db.exists("DocType", MANAGE_ACCESS_DOCTYPE):
+		return
+
+	# The workflow's transitions link to the ITGC Access Manager role, so it must
+	# exist first. Idempotent — covers running this standalone on a site where the
+	# app was already installed before the workflow shipped.
+	create_itgc_roles()
+	_ensure_workflow_masters(
+		{s[0] for s in MA_WORKFLOW_STATES}, {t[1] for t in MA_WORKFLOW_TRANSITIONS}
+	)
+
+	if frappe.db.exists("Workflow", MA_WORKFLOW_NAME):
+		return
+
+	wf = frappe.new_doc("Workflow")
+	wf.workflow_name = MA_WORKFLOW_NAME
+	wf.document_type = MANAGE_ACCESS_DOCTYPE
+	wf.workflow_state_field = "workflow_state"
+	wf.override_status = 1
+	# Disabled on install — only ITGC Settings activates it.
+	wf.is_active = 0
+
+	for state, doc_status, allow_edit in MA_WORKFLOW_STATES:
+		wf.append(
+			"states",
+			{
+				"state": state,
+				"doc_status": doc_status,
+				# A pending/rejected request is editable by its requester (so they
+				# can fix and resubmit); an approved request locks to System Manager.
+				"allow_edit": allow_edit or "System Manager",
+			},
+		)
+
+	for from_state, action, to_state, allowed, self_approval, condition in MA_WORKFLOW_TRANSITIONS:
+		row = {
+			"state": from_state,
+			"action": action,
+			"next_state": to_state,
+			"allowed": allowed,
+			"allow_self_approval": self_approval,
+		}
+		if condition:
+			row["condition"] = condition
+		wf.append("transitions", row)
+
+	wf.insert(ignore_permissions=True)
+	frappe.db.commit()
+
+
+def set_manage_access_workflow_active(is_active):
+	"""Activate/deactivate the Manage Access workflow. Returns True if state changed.
+
+	Called from ITGC Settings when "Enable Manage Access" is toggled. Ensures the
+	workflow exists first (covers sites installed before the workflow shipped).
+	"""
+	ensure_manage_access_workflow()
+	if not frappe.db.exists("Workflow", MA_WORKFLOW_NAME):
+		return False
+
+	wf = frappe.get_doc("Workflow", MA_WORKFLOW_NAME)
 	target = 1 if is_active else 0
 	if wf.is_active == target:
 		return False
