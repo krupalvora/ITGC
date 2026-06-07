@@ -47,15 +47,12 @@ jobs:
               pull_number: prNumber,
             });
 
-            // Gate the slash command to PRs targeting the same branches the
-            // main check guards. Comments on other PRs are silently ignored.
-            const gatedBranches = ['staging', 'prod'];
-            if (!gatedBranches.includes(pr.base.ref)) {
-              core.info(`PR #${prNumber} targets '${pr.base.ref}' — not gated, ignoring /recheck.`);
-              return;
-            }
-
-            // Find the latest run of manage-change-check.yml for this PR's head SHA.
+            // No hardcoded branch list here: whether a branch is gated is decided
+            // solely by on.pull_request.branches in manage-change-check.yml. If a
+            // check run exists for this PR's head SHA, the branch is gated and we
+            // re-run it; if not, the PR isn't gated (or hasn't run yet) and we exit
+            // quietly. This way adding/removing environments touches only that one
+            // branch list — never this file.
             const { data: runsResp } = await github.rest.actions.listWorkflowRuns({
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -66,7 +63,7 @@ jobs:
 
             const latest = runsResp.workflow_runs[0];
             if (!latest) {
-              core.setFailed(`No manage-change-check run found for SHA ${pr.head.sha}. Push a new commit to trigger one.`);
+              core.info(`No manage-change-check run found for SHA ${pr.head.sha} — branch '${pr.base.ref}' is not gated, or no run yet (push a commit to trigger one). Ignoring /recheck.`);
               return;
             }
 
