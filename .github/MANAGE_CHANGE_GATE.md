@@ -44,13 +44,12 @@ Copy the output — you'll paste the **exact same value** into Steps 2 and 3.
 ## Step 2 — Set the token in Frappe
 
 1. Open **ITGC Settings** (Awesomebar → "ITGC Settings").
-2. Leave **"Allow Public Manage Change Status API (no token)"** *unticked*
-   (this keeps the endpoint token-protected — the secure default).
-3. Paste the value into **"Manage Change Status API Token"** and **Save**.
+2. Paste the value into **"Manage Change Status API Token"** and **Save**.
 
-> If you tick *Allow Public…* the endpoint needs no token, but anyone who can
-> reach the URL can read approval state — only do this for a fully private/
-> internal endpoint.
+> The token is **mandatory** whenever Change Management is enabled — the status
+> API is always token-protected and has no public mode. A call without a valid
+> `X-ITGC-Token` header (or when no token is configured) is rejected with 401,
+> which blocks the gated merge.
 
 ## Step 3 — Add the secret + variable in GitHub
 
