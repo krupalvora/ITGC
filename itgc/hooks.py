@@ -116,13 +116,14 @@ after_install = "itgc.install.after_install"
 # -----------
 # Permissions evaluated in scripted ways
 
-# permission_query_conditions = {
-# 	"Event": "frappe.desk.doctype.event.event.get_permission_query_conditions",
-# }
-#
-# has_permission = {
-# 	"Event": "frappe.desk.doctype.event.event.has_permission",
-# }
+# Restrict Manage Access requests to the requester, their approvers, and admins.
+permission_query_conditions = {
+	"Manage Access": "itgc.overrides.manage_access_perms.get_permission_query_conditions",
+}
+
+has_permission = {
+	"Manage Access": "itgc.overrides.manage_access_perms.has_permission",
+}
 
 # DocType Class
 # ---------------
@@ -164,6 +165,12 @@ doc_events = {
 	"Custom DocPerm": {
 		"validate": "itgc.overrides.access_guard.block_doc",
 		"on_trash": "itgc.overrides.access_guard.block_doc",
+	},
+	# A custom doctype's standard DocPerm rows are editable from the DocType form
+	# (custom doctypes skip the developer-mode gate), bypassing the Custom DocPerm
+	# guard above. Block any permissions-table change made that way.
+	"DocType": {
+		"validate": "itgc.overrides.access_guard.block_doctype_perm_change",
 	},
 }
 
