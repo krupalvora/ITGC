@@ -166,6 +166,12 @@ doc_events = {
 		"validate": "itgc.overrides.access_guard.block_doc",
 		"on_trash": "itgc.overrides.access_guard.block_doc",
 	},
+	# A custom doctype's standard DocPerm rows are editable from the DocType form
+	# (custom doctypes skip the developer-mode gate), bypassing the Custom DocPerm
+	# guard above. Block any permissions-table change made that way.
+	"DocType": {
+		"validate": "itgc.overrides.access_guard.block_doctype_perm_change",
+	},
 }
 
 # Block the core Doctype Permissions page (Role Permission Manager). Its

@@ -99,3 +99,55 @@ def block_user_trash(doc, method=None):
 	"""Block deleting a User from the frontend (use Manage Access 'Disable User')."""
 	if _managed():
 		_throw(_("User"))
+
+
+# Permission flags compared to detect a doctype-permission change. Mirrors the
+# rights tracked by Frappe's Role Permission Manager plus the row's role/level.
+_PERM_FIELDS = (
+	"role", "permlevel", "if_owner",
+	"select", "read", "write", "create", "delete", "submit", "cancel", "amend",
+	"print", "email", "report", "import", "export", "share", "set_user_permissions",
+)
+
+
+def _perm_signature(rows):
+	"""Order-independent signature of a permissions table for equality testing."""
+	signature = []
+	for row in rows:
+		signature.append(
+			tuple(
+				(field, (row.get(field) or "") if field == "role" else int(row.get(field) or 0))
+				for field in _PERM_FIELDS
+			)
+		)
+	return sorted(signature)
+
+
+def block_doctype_perm_change(doc, method=None):
+	"""Block editing a doctype's permissions (DocPerm) via the DocType form.
+
+	`block_doc` guards *Custom* DocPerm, but a custom doctype's standard DocPerm
+	rows are editable straight from the DocType form (custom doctypes skip the
+	developer-mode gate). That is a back door around Manage Access governance, so
+	here we block any save that changes the permissions table while governed.
+
+	Only the permissions table is compared, so legitimate structural edits to a
+	custom doctype (fields, naming, etc.) are unaffected; doctype permissions may
+	only change through the Manage Access 'Change Doctype Permission' flow (which
+	writes Custom DocPerm with `in_manage_access` set and never touches DocPerm).
+	"""
+	if not _managed():
+		return
+	# Creating a doctype sets its initial permissions; that is doctype creation,
+	# not a modification of existing permissions. Only guard edits to existing ones.
+	if doc.is_new():
+		return
+
+	old_rows = frappe.get_all(
+		"DocPerm",
+		filters={"parent": doc.name, "parenttype": "DocType"},
+		fields=list(_PERM_FIELDS),
+	)
+	new_rows = doc.get("permissions") or []
+	if _perm_signature(old_rows) != _perm_signature(new_rows):
+		_throw(_("Doctype permissions"))
