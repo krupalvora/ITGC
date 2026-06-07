@@ -6,6 +6,13 @@ name: Manage Change Approval Check
 
 on:
   pull_request:
+    # The list of GATED branches. This is the ONLY place environments are declared
+    # in YAML — GitHub can't trigger on a dynamic branch list. Each branch maps to
+    # its own environment's ERP purely via repo settings (no script changes): for a
+    # branch named <b>, create Variable ITGC_BASE_URL_<B> and Secret
+    # ITGC_GATE_TOKEN_<B> (uppercase, non-alphanumerics -> "_"). To manage N
+    # environments, just add the branch here + those two settings. See
+    # ../MANAGE_CHANGE_GATE.md.
     branches:
       - staging
       - prod
@@ -27,16 +34,34 @@ jobs:
       - name: Poll Manage Change approval state
         id: check
         env:
-          ITGC_BASE_URL: ${{ vars.ITGC_BASE_URL }}
-          ITGC_GATE_TOKEN: ${{ secrets.ITGC_GATE_TOKEN }}
+          # All repo Variables and Secrets, passed as JSON so the script can look up
+          # the per-environment entry by a key derived from the target branch — no
+          # per-environment lines needed here. (Forked-PR runs receive no secrets, so
+          # they fail closed, which is the desired behaviour for a merge gate.)
+          VARS_JSON: ${{ toJSON(vars) }}
+          SECRETS_JSON: ${{ toJSON(secrets) }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
           MAX_ATTEMPTS: "30"
           SLEEP_SECONDS: "30"
         run: |
           set -u
-          if [ -z "${ITGC_BASE_URL:-}" ]; then
-            echo "ITGC_BASE_URL variable is not set in repo Settings → Variables" >&2
+
+          # ── Resolve which environment's ERP gates THIS branch ──────────────
+          # Per-environment ERPs, fully config-driven: derive an ENV key from the
+          # base branch (uppercase; non-alphanumerics -> "_") and look up
+          # ITGC_BASE_URL_<ENV> / ITGC_GATE_TOKEN_<ENV>. Falls back to the generic
+          # ITGC_BASE_URL / ITGC_GATE_TOKEN for a single-ERP setup. Adding an
+          # environment is purely a repo-settings change — no edits here.
+          ENV_KEY=$(printf '%s' "$TARGET_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g')
+          ITGC_BASE_URL=$(printf '%s' "$VARS_JSON" | jq -r --arg k "ITGC_BASE_URL_${ENV_KEY}" '.[$k] // .ITGC_BASE_URL // ""')
+          ITGC_GATE_TOKEN=$(printf '%s' "$SECRETS_JSON" | jq -r --arg k "ITGC_GATE_TOKEN_${ENV_KEY}" '.[$k] // .ITGC_GATE_TOKEN // ""')
+
+          echo "Target branch '$TARGET_BRANCH' -> environment key '$ENV_KEY'"
+
+          if [ -z "$ITGC_BASE_URL" ]; then
+            echo "No base URL configured for gated branch '$TARGET_BRANCH'." >&2
+            echo "Add repo Variable ITGC_BASE_URL_${ENV_KEY} and Secret ITGC_GATE_TOKEN_${ENV_KEY}." >&2
             exit 2
           fi
 
@@ -52,6 +77,7 @@ jobs:
           APPROVED=false
           REASON=unknown
           MC_NAME=""
+          MC_BRANCH=""
           WORKFLOW_STATE=""
           HTTP_CODE="000"
 
@@ -60,6 +86,7 @@ jobs:
             APPROVED=$(jq -r '.message.approved // false' /tmp/mc_response.json 2>/dev/null || echo "false")
             REASON=$(jq -r '.message.reason // "unknown"' /tmp/mc_response.json 2>/dev/null || echo "unknown")
             MC_NAME=$(jq -r '.message.name // ""' /tmp/mc_response.json 2>/dev/null || echo "")
+            MC_BRANCH=$(jq -r '.message.mc_branch // ""' /tmp/mc_response.json 2>/dev/null || echo "")
             WORKFLOW_STATE=$(jq -r '.message.workflow_state // ""' /tmp/mc_response.json 2>/dev/null || echo "")
 
             echo "Attempt $attempt/$MAX_ATTEMPTS — HTTP $HTTP_CODE, approved=$APPROVED, reason=$REASON"
@@ -69,9 +96,11 @@ jobs:
               break
             fi
 
-            # Terminal errors — retrying won't help, fail fast.
+            # Terminal errors — retrying won't help, fail fast. branch_mismatch /
+            # unknown_branch are config problems, not timing, so don't burn the poll
+            # window on them.
             case "$REASON" in
-              unauthorized|missing_parameters)
+              unauthorized|missing_parameters|branch_mismatch|unknown_branch)
                 echo "Terminal error: $REASON — aborting retries"
                 break
                 ;;
@@ -90,6 +119,7 @@ jobs:
             echo "approved=$APPROVED"
             echo "reason=$REASON"
             echo "mc_name=$MC_NAME"
+            echo "mc_branch=$MC_BRANCH"
             echo "workflow_state=$WORKFLOW_STATE"
             echo "http_code=$HTTP_CODE"
           } >> "$GITHUB_OUTPUT"
@@ -103,6 +133,7 @@ jobs:
             const approved = '${{ steps.check.outputs.approved }}' === 'true';
             const reason = '${{ steps.check.outputs.reason }}';
             const mcName = '${{ steps.check.outputs.mc_name }}';
+            const mcBranch = '${{ steps.check.outputs.mc_branch }}';
             const workflowState = '${{ steps.check.outputs.workflow_state }}';
             const httpCode = '${{ steps.check.outputs.http_code }}';
             const prUrl = context.payload.pull_request.html_url;
@@ -116,8 +147,10 @@ jobs:
               submitted: 'Matching Manage Change is submitted.',
               not_submitted: 'Manage Change record exists but is not submitted (docstatus != 1).',
               no_manage_change_record: 'No Manage Change record found for this PR URL + target branch combination.',
+              branch_mismatch: `A Manage Change for this PR exists but its Branch is \`${mcBranch}\`, not the PR's target branch \`${targetBranch}\`. They must match exactly.`,
+              unknown_branch: `Target branch \`${targetBranch}\` is not a registered Manage Change VC Branch in the ERP this gate calls — the PR may be routed to the wrong environment, or the branch isn't set up there.`,
               missing_parameters: 'Workflow did not send the required parameters — check the action config.',
-              unauthorized: 'Endpoint rejected the call — verify the `ITGC_GATE_TOKEN` secret.',
+              unauthorized: 'Endpoint rejected the call — verify the gate token secret for this environment.',
               unknown: 'Endpoint returned an unexpected response. Check the workflow logs.',
             }[reason] || reason;
 
@@ -127,11 +160,18 @@ jobs:
             lines.push(`- **PR URL**: ${prUrl}`);
             lines.push(`- **Target branch**: \`${targetBranch}\``);
             if (mcName) lines.push(`- **Manage Change**: \`${mcName}\`${workflowState ? ` (workflow state: ${workflowState})` : ''}`);
+            if (mcBranch) lines.push(`- **Manage Change branch**: \`${mcBranch}\``);
             lines.push(`- **Reason**: \`${reason}\` — ${reasonHint}`);
             lines.push(`- **HTTP**: \`${httpCode}\``);
             lines.push('');
             if (!approved) {
-              lines.push(`> **Action required:** Open your submitted Manage Change record (the one approved by your manager for this change) and set \`version_control_url\` to this PR URL. Make sure \`branch\` is \`${targetBranch}\`. The check polls for ~15 minutes; if you take longer, comment \`/recheck\` to trigger a fresh poll.`);
+              if (reason === 'branch_mismatch') {
+                lines.push(`> **Action required:** Open Manage Change \`${mcName}\` and set its **Branch** to \`${targetBranch}\` (currently \`${mcBranch}\`), or raise the PR against the \`${mcBranch}\` branch instead. Then comment \`/recheck\`.`);
+              } else if (reason === 'unknown_branch') {
+                lines.push(`> **Action required:** This gate calls one environment's ERP. Confirm the PR targets a branch that environment gates, and that a **Manage Change VC Branch** named \`${targetBranch}\` exists there. This is a setup issue — ask an admin to verify the GitHub variables/secrets for \`${targetBranch}\`.`);
+              } else {
+                lines.push(`> **Action required:** Open your submitted Manage Change record (the one approved by your manager for this change) and set \`version_control_url\` to this PR URL. Make sure \`branch\` is \`${targetBranch}\`. The check polls for ~15 minutes; if you take longer, comment \`/recheck\` to trigger a fresh poll.`);
+              }
             }
 
             const body = lines.join('\n');

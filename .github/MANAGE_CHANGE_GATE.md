@@ -1,12 +1,36 @@
 # Manage Change Merge Gate — Setup
 
-These two workflows block merges into the gated branches (`staging`, `prod`)
+These two workflows block merges into the gated branches
 until a matching **Manage Change** record is submitted (approved) in Frappe:
 
 | Workflow | Purpose |
 | --- | --- |
 | [`manage-change-check.yml`](workflows/manage-change-check.yml) | On every PR to a gated branch, polls the ITGC endpoint and fails until the change is approved. |
 | [`manage-change-recheck.yml`](workflows/manage-change-recheck.yml) | Lets a maintainer comment `/recheck` to re-poll without pushing a new commit. |
+
+## Multiple environments (manage N)
+
+Each environment runs its own ERP, and the gate is **fully config-driven**: which
+branch is gated and which ERP it's checked against is set with repo settings, not
+code. For a PR into branch `<b>`, the workflow derives an env key (uppercase the
+branch, replace non-alphanumerics with `_`) and looks up:
+
+| Setting | Type | Example (branch `prod`) |
+| --- | --- | --- |
+| `ITGC_BASE_URL_<ENV>` | repo **Variable** | `ITGC_BASE_URL_PROD` = `https://erp.example.com` |
+| `ITGC_GATE_TOKEN_<ENV>` | repo **Secret** | `ITGC_GATE_TOKEN_PROD` = that ERP's gate token |
+
+So a `staging` PR hits the staging ERP (`ITGC_BASE_URL_STAGING` / `ITGC_GATE_TOKEN_STAGING`),
+a `prod` PR hits the prod ERP, and so on. (A generic `ITGC_BASE_URL` / `ITGC_GATE_TOKEN`
+is used as a fallback if no env-specific setting exists — handy for a single-ERP setup.)
+
+**To add the Nth environment** — the only YAML edit you ever make:
+1. Add its branch under `on.pull_request.branches` in `manage-change-check.yml`
+   (GitHub can't trigger on a dynamic branch list, so this list must stay in YAML).
+2. Create repo Variable `ITGC_BASE_URL_<ENV>` and Secret `ITGC_GATE_TOKEN_<ENV>` for it.
+
+No `case`/script changes, and `manage-change-recheck.yml` needs no edits at all
+(it keys off whether a check run exists, not a branch list).
 
 The check calls a Frappe endpoint that is **token-protected by default**
 (`itgc.api.manage_change_gate.check_pr_approval`). You configure the **same
@@ -19,8 +43,8 @@ state.
 
 | Name | Type | Where | How you get it |
 | --- | --- | --- | --- |
-| **Gate token** | shared secret | ITGC Settings **and** GitHub secret `ITGC_GATE_TOKEN` | You generate it (Step 1). |
-| `ITGC_BASE_URL` | repo **variable** | GitHub → Settings → Variables | Your Frappe site URL, e.g. `https://erp.example.com` |
+| **Gate token** (per env) | shared secret | each env's ITGC Settings **and** GitHub secret `ITGC_GATE_TOKEN_<ENV>` (or generic `ITGC_GATE_TOKEN`) | You generate it (Step 1). |
+| `ITGC_BASE_URL_<ENV>` (per env) | repo **variable** | GitHub → Settings → Variables | That environment's Frappe site URL, e.g. `https://erp.example.com` (generic `ITGC_BASE_URL` is a fallback) |
 | `GITHUB_TOKEN` | auto | provided by Actions | Nothing to do — built in (used by `/recheck`). |
 
 > There is **no token to "fetch" from a third party**. The gate token is a

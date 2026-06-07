@@ -50,6 +50,20 @@ def check_pr_approval(pr_url=None, target_branch=None):
 			frappe.local.response["http_status_code"] = 400
 			return {"approved": False, "reason": "missing_parameters"}
 
+		# Guard 1 — unknown branch. The gate matches MC.branch (a Link to "Manage
+		# Change VC Branch") against the git base ref by an EXACT string compare, so
+		# a branch this ERP doesn't know about can never match. Surface that as its
+		# own reason instead of a misleading "no record": it almost always means the
+		# PR was routed to the wrong environment's ERP, or the branch hasn't been
+		# registered here yet (and so no Manage Change could ever be raised for it).
+		if not frappe.db.exists("Manage Change VC Branch", target_branch):
+			return {
+				"approved": False,
+				"reason": "unknown_branch",
+				"pr_url": pr_url,
+				"target_branch": target_branch,
+			}
+
 		has_workflow_state = frappe.get_meta("Manage Change").has_field("workflow_state")
 		fields = ["name", "docstatus"]
 		if has_workflow_state:
@@ -65,6 +79,32 @@ def check_pr_approval(pr_url=None, target_branch=None):
 		)
 
 		if not rows:
+			# Guard 2 — branch mismatch. Is there an MC bound to this exact PR URL
+			# but on a DIFFERENT branch? That's the classic naming mismatch: the MC's
+			# branch (its VC Branch record name) doesn't equal the PR's git base ref,
+			# so the exact match above misses. Point the dev straight at the fix
+			# rather than letting them chase a phantom "no record".
+			other = frappe.get_all(
+				"Manage Change",
+				filters={
+					"version_control_url": pr_url,
+					"branch": ["!=", target_branch],
+					"docstatus": ["<", 2],
+				},
+				fields=["name", "branch"],
+				order_by="modified desc",
+				limit=1,
+				ignore_permissions=True,
+			)
+			if other:
+				return {
+					"approved": False,
+					"reason": "branch_mismatch",
+					"name": other[0].name,
+					"mc_branch": other[0].branch,
+					"pr_url": pr_url,
+					"target_branch": target_branch,
+				}
 			return {
 				"approved": False,
 				"reason": "no_manage_change_record",

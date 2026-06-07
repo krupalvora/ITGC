@@ -18,6 +18,21 @@ def _set_token(token):
 	)
 
 
+def _ensure_vc_branch(branch):
+	if not frappe.db.exists("Manage Change VC Branch", branch):
+		frappe.get_doc({"doctype": "Manage Change VC Branch", "branch": branch}).insert(
+			ignore_permissions=True
+		)
+
+
+def _new_mc(url, branch):
+	doc = frappe.new_doc("Manage Change")
+	doc.version_control_url = url
+	doc.branch = branch
+	doc.insert(ignore_permissions=True, ignore_mandatory=True, ignore_links=True)
+	return doc
+
+
 class TestManageChangeGate(FrappeTestCase):
 	"""The merge gate is the CI-facing approval oracle, so its auth must be
 	fail-closed: a valid token is always mandatory — there is no public mode.
@@ -55,13 +70,41 @@ class TestManageChangeGate(FrappeTestCase):
 	def test_authorized_call_does_not_leak_requester_fields(self):
 		"""On a successful auth the response must not include approver/ticket data."""
 		_set_token(TOKEN)
+		_ensure_vc_branch("prod")
 		with patch.object(frappe, "get_request_header", return_value=TOKEN):
 			result = check_pr_approval(
 				pr_url="https://example.com/pr/does-not-exist", target_branch="prod"
 			)
 		# No matching Manage Change, but the point is the contract: no leak keys.
+		self.assertEqual(result["reason"], "no_manage_change_record")
 		self.assertNotIn("approver", result)
 		self.assertNotIn("ticket_id", result)
+
+	def test_unknown_branch_is_flagged(self):
+		"""A target branch with no VC Branch record gets its own reason, not a
+		misleading 'no record'."""
+		_set_token(TOKEN)
+		branch = "branch-that-does-not-exist"
+		self.assertFalse(frappe.db.exists("Manage Change VC Branch", branch))
+		with patch.object(frappe, "get_request_header", return_value=TOKEN):
+			result = check_pr_approval(pr_url="https://x/pr/1", target_branch=branch)
+		self.assertFalse(result["approved"])
+		self.assertEqual(result["reason"], "unknown_branch")
+
+	def test_branch_mismatch_is_flagged(self):
+		"""An MC bound to this PR URL but a different branch -> branch_mismatch,
+		naming the MC's actual branch so the dev can fix it."""
+		_set_token(TOKEN)
+		_ensure_vc_branch("prod")
+		_ensure_vc_branch("staging")
+		pr = "https://example.com/pr/mismatch"
+		mc = _new_mc(pr, "staging")  # MC says staging...
+		with patch.object(frappe, "get_request_header", return_value=TOKEN):
+			result = check_pr_approval(pr_url=pr, target_branch="prod")  # ...PR targets prod
+		self.assertFalse(result["approved"])
+		self.assertEqual(result["reason"], "branch_mismatch")
+		self.assertEqual(result["mc_branch"], "staging")
+		self.assertEqual(result["name"], mc.name)
 
 	def test_missing_parameters_returns_400(self):
 		_set_token(TOKEN)
