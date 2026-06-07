@@ -8,20 +8,13 @@ from frappe.utils.password import get_decrypted_password
 
 
 def _is_authorized():
-	"""Token check for the merge gate. Fail-closed by default.
+	"""Token check for the merge gate. Fail-closed — a valid token is mandatory.
 
-	The endpoint is token-protected unless an admin explicitly opts into a
-	public endpoint via ITGC Settings -> "Allow Public Manage Change Status API".
-	When protected (the default), the caller must send the configured token in
-	the `X-ITGC-Token` header. If no token is configured we still deny, so a
-	misconfigured site never silently exposes approval state.
+	The caller must send the configured token in the `X-ITGC-Token` header, and it
+	must match the token stored in ITGC Settings. There is no public/unauthenticated
+	mode: if no token is configured, or the header is missing or wrong, the call is
+	denied, so a misconfigured site never silently exposes approval state.
 	"""
-	allow_public = frappe.db.get_single_value(
-		"ITGC Settings", "allow_public_manage_change_status_endpoint"
-	)
-	if allow_public:
-		return True
-
 	expected = get_decrypted_password(
 		"ITGC Settings",
 		"ITGC Settings",
