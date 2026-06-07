@@ -6,6 +6,7 @@ from frappe.tests.utils import FrappeTestCase
 
 from itgc.itgc.doctype.manage_access.manage_access import (
 	get_effective_doc_perm,
+	users_without_role_profile,
 )
 
 TEST_ROLE = "System Manager"  # always present on a Frappe site
@@ -161,6 +162,52 @@ class TestManageAccess(FrappeTestCase):
 		doc.role = "Guest"
 		doc.save(ignore_permissions=True)  # owner == session user → allowed
 		self.assertEqual(doc.role, "Guest")
+
+	def test_new_user_query_includes_website_users_without_role_profile(self):
+		"""The 'New User' link query keys on absence of a Role Profile, not user_type.
+
+		A fresh self-signup lands as a Website User with no Role Profile (see
+		frappe.core ... user.sign_up). It is exactly the user a New User onboarding
+		request needs to target, so it must appear in the 'For User' dropdown.
+		"""
+		email = "itgc-test-website-user@example.com"
+		if frappe.db.exists("User", email):
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		user = frappe.new_doc("User")
+		user.email = email
+		user.first_name = "ITGC Website"
+		user.user_type = "Website User"
+		user.insert(ignore_permissions=True)
+
+		rows = users_without_role_profile("User", email, "name", 0, 20, None)
+		self.assertIn(email, [r[0] for r in rows])
+
+	def test_new_user_query_excludes_users_with_role_profile(self):
+		"""A user who already has a Role Profile is onboarded — never a 'New User' target."""
+		profile = _ensure_role_profile("ITGC Test Profile")
+		email = "itgc-test-onboarded@example.com"
+		if frappe.db.exists("User", email):
+			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
+		user = frappe.new_doc("User")
+		user.email = email
+		user.first_name = "ITGC Onboarded"
+		user.user_type = "System User"
+		user.insert(ignore_permissions=True)
+		# Set via db to avoid triggering role-profile role sync on save.
+		frappe.db.set_value("User", email, "role_profile_name", profile)
+
+		rows = users_without_role_profile("User", email, "name", 0, 20, None)
+		self.assertNotIn(email, [r[0] for r in rows])
+
+
+def _ensure_role_profile(name):
+	if frappe.db.exists("Role Profile", name):
+		return name
+	rp = frappe.new_doc("Role Profile")
+	rp.role_profile = name
+	rp.append("roles", {"role": TEST_ROLE})
+	rp.insert(ignore_permissions=True)
+	return rp.name
 
 
 def _make_department(name, users):

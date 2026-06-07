@@ -127,15 +127,18 @@ function restrict_request_type_options(frm) {
 
 function set_request_for_query(frm) {
 	frm.set_query("request_for", () => {
-		// "New User" requests may only target users that have no Role Profile yet.
-		// role_profile_name is a permlevel-1 field on User, so a client-side filter
-		// returns nothing for a requester without permlevel-1 access (hiding the new
-		// user). Evaluate the rule server-side instead. Other types target any user.
+		// "New User" requests target not-yet-onboarded users — defined solely by the
+		// absence of a Role Profile, regardless of user_type (self-signups land as
+		// Website Users). role_profile_name is a permlevel-1 field on User, so a
+		// client-side filter returns nothing for a requester without permlevel-1
+		// access (hiding the new user). Evaluate that rule server-side instead.
 		if (frm.doc.request_type === "New User") {
 			return {
 				query: "itgc.itgc.doctype.manage_access.manage_access.users_without_role_profile",
 			};
 		}
-		return {};
+		// All other request types modify access of users already in the system,
+		// so they only target enabled System Users.
+		return { filters: { enabled: 1, user_type: "System User" } };
 	});
 }

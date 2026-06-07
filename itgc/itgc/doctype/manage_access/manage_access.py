@@ -361,17 +361,23 @@ def get_current_doc_perm(document_type, perm_role, permission_level=0):
 @frappe.whitelist()
 @frappe.validate_and_sanitize_search_inputs
 def users_without_role_profile(doctype, txt, searchfield, start, page_len, filters):
-	"""Link query for the 'New User' flow: enabled System Users with no Role Profile yet.
+	"""Link query for the 'New User' flow: enabled users with no Role Profile yet.
+
+	"Not yet onboarded" is defined solely by the absence of a Role Profile, NOT by
+	user_type. Self-signups land as `Website User` (frappe.core ... user.sign_up
+	hard-codes it) and only flip to `System User` once granted a desk-access role —
+	so filtering on `user_type = "System User"` hid fresh signups from the 'For User'
+	dropdown. They are exactly the users this flow exists to onboard, so we key on
+	`role_profile_name` alone and accept any user_type.
 
 	`role_profile_name` is a permlevel-1 field on User, so a client-side filter on it
 	(applied via set_query) silently returns nothing for a requester who lacks
-	permlevel-1 read access — which hid the just-created user from the 'For User'
-	dropdown. Running the filter server-side with ignore_permissions evaluates it
-	correctly regardless of the requester's field-level access.
+	permlevel-1 read access — which also hid the just-created user. Running the filter
+	server-side with ignore_permissions evaluates it correctly regardless of the
+	requester's field-level access.
 	"""
 	conditions = {
 		"enabled": 1,
-		"user_type": "System User",
 		"role_profile_name": ["is", "not set"],
 		"name": ["not in", ("Administrator", "Guest")],
 	}
