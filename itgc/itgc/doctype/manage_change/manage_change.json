@@ -44,7 +44,8 @@
    "fieldname": "version_control_url",
    "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Version Control URL"
+   "label": "Version Control URL",
+   "no_copy": 1
   },
   {
    "fieldname": "approver",
@@ -58,6 +59,7 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Change Type",
+   "no_copy": 1,
    "options": "Manage Change Type",
    "reqd": 1
   },
@@ -66,18 +68,21 @@
    "fieldtype": "Link",
    "in_list_view": 1,
    "label": "Department",
+   "no_copy": 1,
    "options": "Manage Change Department",
    "reqd": 1
   },
   {
    "fieldname": "ticket",
    "fieldtype": "Data",
-   "label": "Ticket"
+   "label": "Ticket",
+   "no_copy": 1
   },
   {
    "fieldname": "ticket_id",
    "fieldtype": "Data",
-   "label": "Ticket ID"
+   "label": "Ticket ID",
+   "no_copy": 1
   },
   {
    "fieldname": "project_managment_section",
@@ -135,7 +140,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-03 18:16:05.582535",
+ "modified": "2026-06-07 22:38:01.180749",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Change",
