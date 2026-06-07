@@ -131,6 +131,37 @@ class TestManageAccess(FrappeTestCase):
 		doc.save(ignore_permissions=True)
 		self.assertEqual(self._approver_users(doc), ["Guest"])
 
+	# ----------------------------------------------------- maker-checker
+	def test_non_owner_cannot_edit_request_content(self):
+		"""An approver (any non-owner, non-System-Manager) must not alter a request.
+
+		Otherwise they could edit a pending request and approve their own edited
+		version. The guard runs in `validate`, so it holds even when permissions are
+		bypassed (e.g. a privileged REST path).
+		"""
+		doc = self._new_request(
+			request_type="Request Role", request_for="Administrator", role=TEST_ROLE
+		)
+		doc.insert(ignore_permissions=True)  # owner == Administrator (the session user)
+
+		doc.role = "Guest"  # tamper with the request content
+		try:
+			frappe.set_user("Guest")  # a non-owner without System Manager
+			with self.assertRaises(frappe.PermissionError):
+				doc.save(ignore_permissions=True)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_owner_can_edit_own_request(self):
+		"""The requester may still edit their own request (e.g. fix and resubmit)."""
+		doc = self._new_request(
+			request_type="Request Role", request_for="Administrator", role=TEST_ROLE
+		)
+		doc.insert(ignore_permissions=True)
+		doc.role = "Guest"
+		doc.save(ignore_permissions=True)  # owner == session user → allowed
+		self.assertEqual(doc.role, "Guest")
+
 
 def _make_department(name, users):
 	if frappe.db.exists("Manage Access Department", name):

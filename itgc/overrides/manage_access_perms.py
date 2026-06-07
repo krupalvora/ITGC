@@ -48,9 +48,18 @@ def has_permission(doc, ptype=None, user=None):
 	if not doc.get("name") or doc.owner == user:
 		return None
 
-	# Approvers may act on requests routed to them; defer to docperms for the rest.
+	# Approvers may VIEW a request routed to them and act on its workflow, but must
+	# not tamper with it (maker-checker): they get `read` plus the workflow actions
+	# — `submit` (Approve: docstatus 0->1) and `cancel` — and `write`, which Frappe
+	# requires only to persist the Reject transition (a docstatus-0 save). They are
+	# denied `create`/`delete`/`amend` on someone else's request. The `write` they
+	# do get cannot be used to alter the request's content: ManageAccess.validate's
+	# maker-checker guard rejects any field change by a non-owner, so an approver
+	# cannot edit-then-approve.
 	if user in {row.user for row in (doc.get("approver") or [])}:
-		return None
+		if ptype in (None, "read", "write", "submit", "cancel"):
+			return None
+		return False
 
 	# Neither owner nor approver: hide it.
 	return False

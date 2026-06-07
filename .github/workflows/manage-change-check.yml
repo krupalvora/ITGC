@@ -10,9 +10,10 @@ on:
     # in YAML — GitHub can't trigger on a dynamic branch list. Each branch maps to
     # its own environment's ERP purely via repo settings (no script changes): for a
     # branch named <b>, create Variable ITGC_BASE_URL_<B> and Secret
-    # ITGC_GATE_TOKEN_<B> (uppercase, non-alphanumerics -> "_"). To manage N
-    # environments, just add the branch here + those two settings. See
-    # ../MANAGE_CHANGE_GATE.md.
+    # ITGC_GATE_TOKEN_<B> (uppercase, non-alphanumerics -> "_"). The job selects
+    # ONLY that one variable/secret (see the "Resolve environment key" step), so no
+    # other repo secret is ever exposed to the run. To manage N environments, just
+    # add the branch here + those two settings. See ../MANAGE_CHANGE_GATE.md.
     branches:
       - staging
       - prod
@@ -28,36 +29,41 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ── 0. Resolve which environment's ERP gates THIS branch ─────────────
+      # Derive an ENV key from the base branch (uppercase; non-alphanumerics ->
+      # "_"). The next step uses it to select ONLY that environment's
+      # variable/secret via the contexts' dynamic-index syntax — we never expand
+      # the whole secrets/vars set, so no unrelated secret reaches the run.
+      - name: Resolve environment key
+        id: key
+        env:
+          TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -u
+          ENV_KEY=$(printf '%s' "$TARGET_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g')
+          echo "Target branch '$TARGET_BRANCH' -> environment key '$ENV_KEY'"
+          echo "env_key=$ENV_KEY" >> "$GITHUB_OUTPUT"
+
       # ── 1. Poll the ITGC endpoint until Manage Change is approved or window elapses ──
       # MAX_ATTEMPTS × SLEEP_SECONDS = total wait. Default 30 × 30s = 15 min.
       # Exits early on success, or on terminal errors that retries won't fix.
       - name: Poll Manage Change approval state
         id: check
         env:
-          # All repo Variables and Secrets, passed as JSON so the script can look up
-          # the per-environment entry by a key derived from the target branch — no
-          # per-environment lines needed here. (Forked-PR runs receive no secrets, so
-          # they fail closed, which is the desired behaviour for a merge gate.)
-          VARS_JSON: ${{ toJSON(vars) }}
-          SECRETS_JSON: ${{ toJSON(secrets) }}
+          # Select ONLY the per-environment entry (or the generic single-ERP
+          # fallback) by name, using the contexts' dynamic-index syntax. This
+          # exposes exactly one variable + one secret to the run — never the whole
+          # secret set. (Forked-PR runs receive no secrets, so ITGC_GATE_TOKEN is
+          # empty and the gate fails closed, which is the desired behaviour.)
+          ITGC_BASE_URL: ${{ vars[format('ITGC_BASE_URL_{0}', steps.key.outputs.env_key)] || vars.ITGC_BASE_URL }}
+          ITGC_GATE_TOKEN: ${{ secrets[format('ITGC_GATE_TOKEN_{0}', steps.key.outputs.env_key)] || secrets.ITGC_GATE_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
           TARGET_BRANCH: ${{ github.event.pull_request.base.ref }}
+          ENV_KEY: ${{ steps.key.outputs.env_key }}
           MAX_ATTEMPTS: "30"
           SLEEP_SECONDS: "30"
         run: |
           set -u
-
-          # ── Resolve which environment's ERP gates THIS branch ──────────────
-          # Per-environment ERPs, fully config-driven: derive an ENV key from the
-          # base branch (uppercase; non-alphanumerics -> "_") and look up
-          # ITGC_BASE_URL_<ENV> / ITGC_GATE_TOKEN_<ENV>. Falls back to the generic
-          # ITGC_BASE_URL / ITGC_GATE_TOKEN for a single-ERP setup. Adding an
-          # environment is purely a repo-settings change — no edits here.
-          ENV_KEY=$(printf '%s' "$TARGET_BRANCH" | tr '[:lower:]' '[:upper:]' | sed 's/[^A-Z0-9]/_/g')
-          ITGC_BASE_URL=$(printf '%s' "$VARS_JSON" | jq -r --arg k "ITGC_BASE_URL_${ENV_KEY}" '.[$k] // .ITGC_BASE_URL // ""')
-          ITGC_GATE_TOKEN=$(printf '%s' "$SECRETS_JSON" | jq -r --arg k "ITGC_GATE_TOKEN_${ENV_KEY}" '.[$k] // .ITGC_GATE_TOKEN // ""')
-
-          echo "Target branch '$TARGET_BRANCH' -> environment key '$ENV_KEY'"
 
           if [ -z "$ITGC_BASE_URL" ]; then
             echo "No base URL configured for gated branch '$TARGET_BRANCH'." >&2

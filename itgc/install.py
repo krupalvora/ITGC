@@ -59,6 +59,12 @@ MA_APPROVER_CONDITION = "frappe.session.user in [d.user for d in doc.approver]"
 MA_OWNER_CONDITION = "doc.owner == frappe.session.user"
 
 # (state, doc_status, allow_edit_role)
+# Pending/Rejected are editable by "All" because the requester (who edits to fix
+# and resubmit) holds only the "All" role — Frappe workflow `allow_edit` is
+# role-based and has no owner-only option. This does NOT let approvers tamper with
+# a request: ManageAccess._guard_maker_checker rejects any content change by a
+# non-owner, and the permission hook (itgc.overrides.manage_access_perms) limits an
+# approver to read + the workflow actions. Approved locks down to System Manager.
 MA_WORKFLOW_STATES = (
 	("Pending", "0", MA_REQUESTER_ROLE),
 	("Approved", "1", None),

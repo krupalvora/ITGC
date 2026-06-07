@@ -20,6 +20,21 @@ MODIFY_ROLE_PROFILE = "Modify Role Profile"  # System-Manager-only: edit a Role 
 # act on the Role Profile itself; core's update_all_users() re-syncs assigned users.
 NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM, CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE)
 
+# Scalar fields that carry the substance of a request. The maker-checker guard
+# (ManageAccess._guard_maker_checker) forbids a non-owner from changing any of
+# these once the request exists; the `profile_roles` child table is compared
+# separately. `user`/`approver` are server-set (before_insert / validate) and
+# `workflow_state`/docstatus are the approver's legitimate channel, so they are
+# intentionally excluded.
+REQUEST_CONTENT_FIELDS = (
+	"request_for", "request_type", "role", "role_profile", "department",
+	"document_type", "perm_role", "permission_level", "if_owner",
+	"perm_select", "perm_read", "perm_write", "perm_create", "perm_delete",
+	"perm_submit", "perm_cancel", "perm_amend", "perm_print", "perm_email",
+	"perm_report", "perm_import", "perm_export", "perm_share",
+	"new_role_profile_name", "target_role_profile",
+)
+
 class ManageAccess(Document):
 	def before_insert(self):
 		# Requester is always the creating user. This is the access system of
@@ -34,8 +49,42 @@ class ManageAccess(Document):
 			self.request_for = self.user
 
 	def validate(self):
+		self._guard_maker_checker()
 		self.validate_request()
 		self._sync_approver_from_department()
+
+	def _guard_maker_checker(self):
+		"""Maker-checker: an approver must not edit the request they are judging.
+
+		Only the requester (`owner`, who edits to fix and resubmit a rejected
+		request) or a System Manager may change a request's content once it exists.
+		An approver may review it and act on the workflow (Approve/Reject) — and the
+		Reject transition is a docstatus-0 `save`, so Frappe hands them `write` — but
+		they must not alter the request itself, or they could edit a pending request
+		and approve their own edited version. Enforced here in `validate` so it holds
+		for the REST API too, not just the desk form.
+		"""
+		if self.is_new():
+			return
+
+		user = frappe.session.user
+		if user == self.owner or "System Manager" in frappe.get_roles(user):
+			return
+
+		before = self.get_doc_before_save()
+		if before is None:
+			# Couldn't load the prior version — fail closed rather than trust the
+			# incoming values from a non-owner.
+			frappe.throw(_("You are not permitted to edit this request."), frappe.PermissionError)
+
+		changed = [f for f in REQUEST_CONTENT_FIELDS if self.get(f) != before.get(f)]
+		if [r.role for r in (self.profile_roles or [])] != [r.role for r in (before.profile_roles or [])]:
+			changed.append("profile_roles")
+		if changed:
+			frappe.throw(
+				_("Approvers cannot modify a request — only the requester may edit and resubmit it."),
+				frappe.PermissionError,
+			)
 
 	def _sync_approver_from_department(self):
 		"""Populate the read-only `approver` table that the workflow gates approval on.
