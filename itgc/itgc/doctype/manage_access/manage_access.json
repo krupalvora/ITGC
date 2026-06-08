@@ -123,11 +123,12 @@
    "label": "Approval Routing"
   },
   {
-   "description": "Department whose Access Managers approve this request. Leave blank to route to the global Access Manager. Used only while the Manage Access approval workflow is active.",
+   "description": "Department whose Access Managers approve this request. The global Access Manager is still added as a fallback if the department has no eligible approver. Used only while the Manage Access approval workflow is active.",
    "fieldname": "department",
    "fieldtype": "Link",
    "label": "Department",
-   "options": "Manage Access Department"
+   "options": "Manage Access Department",
+   "reqd": 1
   },
   {
    "description": "Users who can approve this request. Synced from the selected Department on save; the global Access Manager is added as a fallback so a request is never left without an approver.",
