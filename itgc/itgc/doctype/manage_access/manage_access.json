@@ -69,7 +69,7 @@
    "label": "For User",
    "mandatory_depends_on": "eval:doc.request_type && !['Change Doctype Permission','Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
    "options": "User",
-   "read_only_depends_on": "eval:!['New User','Disable User'].includes(doc.request_type)"
+   "read_only_depends_on": "eval:!['New User','Disable User','Revoke Role','Revoke Role Profile'].includes(doc.request_type)"
   },
   {
    "fieldname": "column_break_jwou",

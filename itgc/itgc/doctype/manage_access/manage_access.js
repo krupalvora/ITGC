@@ -39,17 +39,21 @@ frappe.ui.form.on("Manage Access", {
 		frm.clear_table("profile_roles");
 		frm.refresh_field("profile_roles");
 
-		// No-subject types -> blank. Create/Modify Role Profile act on the profile
-		// itself, not a user. The remaining self-oriented types default to the current
-		// user (still editable).
-		const no_subject = [
+		// Types that target someone else (or no user) -> blank, so the requester picks
+		// the subject. Create/Modify Role Profile act on the profile itself; New User /
+		// Disable User and the revoke types are raised FOR another user. The remaining
+		// self-oriented types (Request Role / Request Role Profile) default to the
+		// current user (still editable).
+		const not_self = [
 			"New User",
 			"Disable User",
 			"Change Doctype Permission",
 			"Create Role Profile",
 			"Modify Role Profile",
+			"Revoke Role",
+			"Revoke Role Profile",
 		];
-		if (no_subject.includes(frm.doc.request_type)) {
+		if (not_self.includes(frm.doc.request_type)) {
 			frm.set_value("request_for", null);
 		} else if (frm.doc.request_type) {
 			frm.set_value("request_for", frappe.session.user);
@@ -113,15 +117,25 @@ function prefill_profile_roles(frm) {
 }
 
 function restrict_request_type_options(frm) {
-	// "Change Doctype Permission" and the Role Profile management types are
-	// System-Manager-only actions.
-	if (frappe.user_roles.includes("System Manager")) {
+	// Gate request types by the requester's roles. System Manager sees everything.
+	const is_system_manager = frappe.user_roles.includes("System Manager");
+	if (is_system_manager) {
 		return;
 	}
-	const sm_only = ["Change Doctype Permission", "Create Role Profile", "Modify Role Profile"];
+
+	// "Change Doctype Permission" and the Role Profile management types are
+	// System-Manager-only actions.
+	let hidden = ["Change Doctype Permission", "Create Role Profile", "Modify Role Profile"];
+
+	// Revoke / Disable act on another user's access — only ITGC Access Managers
+	// may raise them. The server re-enforces this in validate_request.
+	if (!frappe.user_roles.includes("ITGC Access Manager")) {
+		hidden = hidden.concat(["Revoke Role", "Revoke Role Profile", "Disable User"]);
+	}
+
 	const options = (frm.fields_dict.request_type.df.options || "")
 		.split("\n")
-		.filter((opt) => !sm_only.includes(opt));
+		.filter((opt) => !hidden.includes(opt));
 	frm.set_df_property("request_type", "options", options.join("\n"));
 }
 

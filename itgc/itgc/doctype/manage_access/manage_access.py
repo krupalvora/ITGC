@@ -20,6 +20,16 @@ MODIFY_ROLE_PROFILE = "Modify Role Profile"  # System-Manager-only: edit a Role 
 # act on the Role Profile itself; core's update_all_users() re-syncs assigned users.
 NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM, CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE)
 
+# Revoke types are raised FOR another user, never auto-defaulted to the requester.
+REVOKE_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE)
+
+# Admin actions that only an ITGC Access Manager (or System Manager) may raise, and
+# that always target another user — not self-service.
+ACCESS_MANAGER_ONLY_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE, DISABLE_USER)
+
+# Role whose holders can grant/revoke access (see itgc/install.py).
+ACCESS_MANAGER_ROLE = "ITGC Access Manager"
+
 # Scalar fields that carry the substance of a request. The maker-checker guard
 # (ManageAccess._guard_maker_checker) forbids a non-owner from changing any of
 # these once the request exists; the `profile_roles` child table is compared
@@ -43,9 +53,16 @@ class ManageAccess(Document):
 		# could otherwise be used to spoof the requester.
 		self.user = frappe.session.user
 
-		# Default the subject to the requester for the self-oriented types. New User /
-		# Disable User target someone else; Change Doctype Permission has no subject.
-		if self.request_type and self.request_type not in NO_SUBJECT_TYPES and not self.request_for:
+		# Default the subject to the requester for the self-oriented types (Request
+		# Role / Request Role Profile). New User / Disable User and the revoke types
+		# target someone else, so they are never defaulted to the requester; Change
+		# Doctype Permission and the Role Profile types have no subject.
+		if (
+			self.request_type
+			and self.request_type not in NO_SUBJECT_TYPES
+			and self.request_type not in REVOKE_TYPES
+			and not self.request_for
+		):
 			self.request_for = self.user
 
 	def validate(self):
@@ -187,6 +204,12 @@ class ManageAccess(Document):
 				frappe.throw(_("Select the Role Profile to modify."))
 			return
 
+		# Revoke / Disable are Access-Manager actions raised FOR another user, not
+		# self-service. Enforced here (not just in the form) so the REST API path is
+		# covered too. Gated to creation — the requester is fixed at insert.
+		if self.request_type in ACCESS_MANAGER_ONLY_TYPES and self.is_new():
+			self._require_access_manager()
+
 		if not self.request_for:
 			frappe.throw(_("Please select the user in 'For User'."))
 
@@ -198,6 +221,18 @@ class ManageAccess(Document):
 
 		if self.request_type in (REQUEST_ROLE_PROFILE, REVOKE_ROLE_PROFILE) and not self.role_profile:
 			frappe.throw(_("Please select a Role Profile."))
+
+	def _require_access_manager(self):
+		"""Only an ITGC Access Manager (or System Manager) may raise the admin actions
+		in ACCESS_MANAGER_ONLY_TYPES — they act on another user's access."""
+		roles = frappe.get_roles(frappe.session.user)
+		if "System Manager" not in roles and ACCESS_MANAGER_ROLE not in roles:
+			frappe.throw(
+				_("Only an ITGC Access Manager can raise a {0} request.").format(
+					frappe.bold(self.request_type)
+				),
+				frappe.PermissionError,
+			)
 
 	# -------------------------------------------------------------------- apply
 	def apply(self):
