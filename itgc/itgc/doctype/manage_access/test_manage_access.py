@@ -9,7 +9,9 @@ from itgc.itgc.doctype.manage_access.manage_access import (
 	users_without_role_profile,
 )
 
-TEST_ROLE = "System Manager"  # always present on a Frappe site
+TEST_ROLE = "System Manager"  # always present on a Frappe site; also a PROTECTED role
+ROUTING_ROLE = "ITGC Test Routing Role"  # a plain, non-protected role for routing tests
+DEFAULT_DEPT = "ITGC-Test-Default-Dept"  # `department` is mandatory on Manage Access
 
 
 class TestManageAccess(FrappeTestCase):
@@ -18,7 +20,16 @@ class TestManageAccess(FrappeTestCase):
 	Records are created but NOT submitted, so on_submit/apply() never mutates
 	real users/roles. FrappeTestCase wraps each test in a transaction that is
 	rolled back, so nothing persists.
+
+	`department` is mandatory, so every request that is actually inserted is given
+	one. Routing tests use ROUTING_ROLE (a plain role): System Manager is a
+	protected role, so a request for it is routed to the protected approvers rather
+	than the department — see `_sync_approver_from_department`.
 	"""
+
+	def setUp(self):
+		_ensure_role(ROUTING_ROLE)
+		self.dept = _make_department(DEFAULT_DEPT, ["Guest"])
 
 	def _new_request(self, **kwargs):
 		doc = frappe.new_doc("Manage Access")
@@ -35,7 +46,8 @@ class TestManageAccess(FrappeTestCase):
 			user="spoofed@example.com",
 			request_type="Request Role",
 			request_for="Administrator",
-			role=TEST_ROLE,
+			role=ROUTING_ROLE,
+			department=self.dept,
 		)
 		doc.insert(ignore_permissions=True)
 
@@ -46,14 +58,17 @@ class TestManageAccess(FrappeTestCase):
 		doc = self._new_request(
 			request_type="Request Role",
 			request_for="Administrator",
-			role=TEST_ROLE,
+			role=ROUTING_ROLE,
+			department=self.dept,
 		)
 		doc.insert(ignore_permissions=True)
 		self.assertEqual(doc.user, frappe.session.user)
 
 	def test_subject_defaults_to_requester(self):
 		"""For self-oriented types, request_for defaults to the requester."""
-		doc = self._new_request(request_type="Request Role", role=TEST_ROLE)
+		doc = self._new_request(
+			request_type="Request Role", role=ROUTING_ROLE, department=self.dept
+		)
 		doc.insert(ignore_permissions=True)
 		self.assertEqual(doc.request_for, frappe.session.user)
 
@@ -61,17 +76,28 @@ class TestManageAccess(FrappeTestCase):
 		doc = self._new_request(
 			request_type="Request Role",
 			request_for="Administrator",
+			department=self.dept,
 		)
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
 
 	def test_request_type_is_mandatory(self):
-		doc = self._new_request(request_for="Administrator")
+		doc = self._new_request(request_for="Administrator", department=self.dept)
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
 
+	def test_department_is_mandatory(self):
+		"""A request can never be raised without a Department (the approval router)."""
+		doc = self._new_request(
+			request_type="Request Role", request_for="Administrator", role=ROUTING_ROLE
+		)
+		with self.assertRaises(frappe.MandatoryError):
+			doc.insert(ignore_permissions=True)
+
 	def test_change_doc_perm_requires_doctype_and_role(self):
-		doc = self._new_request(request_type="Change Doctype Permission")
+		doc = self._new_request(
+			request_type="Change Doctype Permission", department=self.dept
+		)
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
 
@@ -92,19 +118,28 @@ class TestManageAccess(FrappeTestCase):
 
 		Uses Guest (never the test session user) as the department approver so the
 		result reflects a pure department sync, not the requester escalation path.
+		A plain (non-protected) role is used so routing goes to the department.
 		"""
 		dept = _make_department("ITGC-Test-Dept-A", ["Guest"])
 		doc = self._new_request(
-			request_type="Request Role", role=TEST_ROLE, department=dept
+			request_type="Request Role", role=ROUTING_ROLE, department=dept
 		)
 		doc.insert(ignore_permissions=True)
 		self.assertEqual(self._approver_users(doc), ["Guest"])
 
 	def test_no_department_escalates_to_global_access_manager(self):
-		"""With no department, the global Access Manager is the fallback approver."""
+		"""With no department, the global Access Manager is the fallback approver.
+
+		`department` is mandatory at insert, so the no-department fallback branch is
+		exercised by calling the router directly (as it would run mid-validate).
+		"""
 		_set_global_access_manager("Administrator")
-		doc = self._new_request(request_type="Request Role", role=TEST_ROLE)
-		doc.insert(ignore_permissions=True)
+		doc = self._new_request(
+			request_type="Request Role", role=ROUTING_ROLE, request_for="Administrator"
+		)
+		doc.user = frappe.session.user
+		doc.department = None
+		doc._sync_approver_from_department()
 		self.assertEqual(self._approver_users(doc), ["Administrator"])
 
 	def test_requester_only_department_escalates_to_fallback(self):
@@ -113,7 +148,7 @@ class TestManageAccess(FrappeTestCase):
 		_set_global_access_manager("Administrator")
 		dept = _make_department("ITGC-Test-Dept-B", [frappe.session.user])
 		doc = self._new_request(
-			request_type="Request Role", role=TEST_ROLE, department=dept
+			request_type="Request Role", role=ROUTING_ROLE, department=dept
 		)
 		doc.insert(ignore_permissions=True)
 		# The global Access Manager (Administrator) is appended as the fallback.
@@ -121,16 +156,17 @@ class TestManageAccess(FrappeTestCase):
 
 	def test_approver_resynced_on_save(self):
 		"""Changing the department re-derives the approver list on the next save."""
-		dept_a = _make_department("ITGC-Test-Dept-C", ["Administrator"])
-		dept_b = _make_department("ITGC-Test-Dept-D", ["Guest"])
+		other = _ensure_user("itgc-approver-b@example.com")
+		dept_a = _make_department("ITGC-Test-Dept-C", ["Guest"])
+		dept_b = _make_department("ITGC-Test-Dept-D", [other])
 		doc = self._new_request(
-			request_type="Request Role", role=TEST_ROLE, department=dept_a
+			request_type="Request Role", role=ROUTING_ROLE, department=dept_a
 		)
 		doc.insert(ignore_permissions=True)
-		self.assertEqual(self._approver_users(doc), ["Administrator"])
+		self.assertEqual(self._approver_users(doc), ["Guest"])
 		doc.department = dept_b
 		doc.save(ignore_permissions=True)
-		self.assertEqual(self._approver_users(doc), ["Guest"])
+		self.assertEqual(self._approver_users(doc), [other])
 
 	# ----------------------------------------------------- maker-checker
 	def test_non_owner_cannot_edit_request_content(self):
@@ -141,7 +177,10 @@ class TestManageAccess(FrappeTestCase):
 		bypassed (e.g. a privileged REST path).
 		"""
 		doc = self._new_request(
-			request_type="Request Role", request_for="Administrator", role=TEST_ROLE
+			request_type="Request Role",
+			request_for="Administrator",
+			role=ROUTING_ROLE,
+			department=self.dept,
 		)
 		doc.insert(ignore_permissions=True)  # owner == Administrator (the session user)
 
@@ -156,7 +195,10 @@ class TestManageAccess(FrappeTestCase):
 	def test_owner_can_edit_own_request(self):
 		"""The requester may still edit their own request (e.g. fix and resubmit)."""
 		doc = self._new_request(
-			request_type="Request Role", request_for="Administrator", role=TEST_ROLE
+			request_type="Request Role",
+			request_for="Administrator",
+			role=ROUTING_ROLE,
+			department=self.dept,
 		)
 		doc.insert(ignore_permissions=True)
 		doc.role = "Guest"
@@ -171,14 +213,18 @@ class TestManageAccess(FrappeTestCase):
 
 	def test_request_user_permission_requires_a_row(self):
 		doc = self._new_request(
-			request_type="Request User Permission", request_for="Administrator"
+			request_type="Request User Permission",
+			request_for="Administrator",
+			department=self.dept,
 		)
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
 
 	def test_request_user_permission_row_requires_allow_and_value(self):
 		doc = self._new_request(
-			request_type="Request User Permission", request_for="Administrator"
+			request_type="Request User Permission",
+			request_for="Administrator",
+			department=self.dept,
 		)
 		doc.append("user_permissions", {"allow": "User", "apply_to_all_doctypes": 1})
 		with self.assertRaises(frappe.ValidationError):
@@ -186,15 +232,18 @@ class TestManageAccess(FrappeTestCase):
 
 	def test_scoped_row_requires_applicable_for(self):
 		doc = self._new_request(
-			request_type="Request User Permission", request_for="Administrator"
+			request_type="Request User Permission",
+			request_for="Administrator",
+			department=self.dept,
 		)
 		doc.append("user_permissions", self._up_row(apply_to_all_doctypes=0))
 		with self.assertRaises(frappe.ValidationError):
 			doc.insert(ignore_permissions=True)
 
 	def test_valid_request_user_permission_passes_validation(self):
-		dept = _make_department("ITGC-Test-Dept-UP", ["Guest"])
-		doc = self._new_request(request_type="Request User Permission", department=dept)
+		doc = self._new_request(
+			request_type="Request User Permission", department=self.dept
+		)
 		doc.append("user_permissions", self._up_row())
 		doc.insert(ignore_permissions=True)  # must not raise
 		self.assertEqual(doc.request_for, frappe.session.user)  # self-service default
@@ -207,13 +256,12 @@ class TestManageAccess(FrappeTestCase):
 		"""
 		target = "Administrator"
 		allow, for_value = "User", "Guest"
-		dept = _make_department("ITGC-Test-Dept-UP2", ["Guest"])
 		frappe.db.delete(
 			"User Permission", {"user": target, "allow": allow, "for_value": for_value}
 		)
 
 		grant = self._new_request(
-			request_type="Request User Permission", request_for=target, department=dept
+			request_type="Request User Permission", request_for=target, department=self.dept
 		)
 		grant.append("user_permissions", self._up_row(for_value=for_value))
 		grant.insert(ignore_permissions=True)
@@ -229,7 +277,9 @@ class TestManageAccess(FrappeTestCase):
 			)
 
 			revoke = self._new_request(
-				request_type="Revoke User Permission", request_for=target, department=dept
+				request_type="Revoke User Permission",
+				request_for=target,
+				department=self.dept,
 			)
 			revoke.append("user_permissions", self._up_row(for_value=for_value))
 			revoke.insert(ignore_permissions=True)
@@ -243,6 +293,7 @@ class TestManageAccess(FrappeTestCase):
 		finally:
 			frappe.flags.in_manage_access = False
 
+	# ----------------------------------------------------- new-user link query
 	def test_new_user_query_includes_website_users_without_role_profile(self):
 		"""The 'New User' link query keys on absence of a Role Profile, not user_type.
 
@@ -251,13 +302,7 @@ class TestManageAccess(FrappeTestCase):
 		request needs to target, so it must appear in the 'For User' dropdown.
 		"""
 		email = "itgc-test-website-user@example.com"
-		if frappe.db.exists("User", email):
-			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
-		user = frappe.new_doc("User")
-		user.email = email
-		user.first_name = "ITGC Website"
-		user.user_type = "Website User"
-		user.insert(ignore_permissions=True)
+		_ensure_user(email, user_type="Website User")
 
 		rows = users_without_role_profile("User", email, "name", 0, 20, None)
 		self.assertIn(email, [r[0] for r in rows])
@@ -266,13 +311,7 @@ class TestManageAccess(FrappeTestCase):
 		"""A user who already has a Role Profile is onboarded — never a 'New User' target."""
 		profile = _ensure_role_profile("ITGC Test Profile")
 		email = "itgc-test-onboarded@example.com"
-		if frappe.db.exists("User", email):
-			frappe.delete_doc("User", email, force=True, ignore_permissions=True)
-		user = frappe.new_doc("User")
-		user.email = email
-		user.first_name = "ITGC Onboarded"
-		user.user_type = "System User"
-		user.insert(ignore_permissions=True)
+		_ensure_user(email, user_type="System User")
 		# Set via db to avoid triggering role-profile role sync on save.
 		frappe.db.set_value("User", email, "role_profile_name", profile)
 
@@ -280,12 +319,42 @@ class TestManageAccess(FrappeTestCase):
 		self.assertNotIn(email, [r[0] for r in rows])
 
 
+def _ensure_role(role_name):
+	if not frappe.db.exists("Role", role_name):
+		frappe.get_doc(
+			{"doctype": "Role", "role_name": role_name, "desk_access": 1}
+		).insert(ignore_permissions=True)
+	return role_name
+
+
+def _ensure_user(email, user_type="System User"):
+	"""Create (or reuse) an enabled user without sending a welcome email.
+
+	The welcome mail path decrypts the outgoing email account password, which fails
+	on a test site whose encryption key does not match — so it is suppressed here.
+	"""
+	if frappe.db.exists("User", email):
+		return email
+	user = frappe.get_doc(
+		{
+			"doctype": "User",
+			"email": email,
+			"first_name": "ITGC Test",
+			"user_type": user_type,
+			"send_welcome_email": 0,
+		}
+	)
+	user.flags.no_welcome_mail = True
+	user.insert(ignore_permissions=True)
+	return user.name
+
+
 def _ensure_role_profile(name):
 	if frappe.db.exists("Role Profile", name):
 		return name
 	rp = frappe.new_doc("Role Profile")
 	rp.role_profile = name
-	rp.append("roles", {"role": TEST_ROLE})
+	rp.append("roles", {"role": ROUTING_ROLE})
 	rp.insert(ignore_permissions=True)
 	return rp.name
 

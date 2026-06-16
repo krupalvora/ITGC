@@ -118,7 +118,7 @@
   {
    "fieldname": "request_for_role_tab",
    "fieldtype": "Tab Break",
-   "label": "Request for Role"
+   "label": "Manage Access"
   },
   {
    "fieldname": "approval_section",
