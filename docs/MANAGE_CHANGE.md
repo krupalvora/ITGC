@@ -124,7 +124,7 @@ branch. **Name it exactly like the git branch** (`staging`, `prod`, …).
 <!-- IMAGE: mc-settings.png
      Screenshot of ITGC Settings -> Manage Change tab: Enable Change Management ticked,
      API token field filled (masked), Send Approval Notifications ticked. -->
-![ITGC Settings — Manage Change tab](images/mc-settings.png)
+![ITGC Settings — Manage Change tab](../.github/images/mc-settings.png)
 
 ### Step 3 — Add the workflow files to each gated repo (one-time per app)
 
@@ -174,7 +174,7 @@ In each gated repo: **Settings → Secrets and variables → Actions**.
 <!-- IMAGE: gh-variables.png
      GitHub Settings -> Secrets and variables -> Actions -> Variables tab, showing
      ITGC_BASE_URL. -->
-![Repository variable ITGC_BASE_URL](images/gh-variables.png)
+![Repository variable ITGC_BASE_URL](../.github/images/gh-variables.png)
 
 ### B2 — Secret: the gate token
 
@@ -184,7 +184,7 @@ In each gated repo: **Settings → Secrets and variables → Actions**.
 
 <!-- IMAGE: gh-secrets.png
      GitHub Secrets tab showing ITGC_GATE_TOKEN. -->
-![Repository secret ITGC_GATE_TOKEN](images/gh-secrets.png)
+![Repository secret ITGC_GATE_TOKEN](../.github/images/gh-secrets.png)
 
 > `GITHUB_TOKEN` (used by the `/recheck` workflow) is injected by Actions
 > automatically — there is **no PAT to create**.
@@ -331,7 +331,7 @@ record for PR #142 on `prod` and returns `submitted`. The status check turns
 <!-- IMAGE: mc-pr-check-passing.png
      Screenshot of the GitHub PR with the "Check Manage Change is approved" status check
      GREEN, merge button enabled. -->
-![PR check passing — merge allowed](images/mc-pr-check-passing.png)
+![PR check passing — merge allowed](../.github/images/mc-pr-check-passing.png)
 
 ---
 
@@ -351,5 +351,5 @@ record for PR #142 on `prod` and returns `submitted`. The status check turns
 
 ---
 
-See also: **[Manage Access →](MANAGE_ACCESS.md)** · **[Docs index →](README.md)** ·
+See also: **[Manage Access →](MANAGE_ACCESS.md)** · **[Overview / README →](../README.md)** ·
 condensed gate guide at [`.github/MANAGE_CHANGE_GATE.md`](../.github/MANAGE_CHANGE_GATE.md)

@@ -130,10 +130,13 @@ Fill in, in order:
 5. **Access Manager Role Holders** — read-only live list; confirms who currently
    holds the `ITGC Access Manager` role.
 
-<!-- IMAGE: ma-settings.png
-     Screenshot of ITGC Settings -> Manage Access tab, BEFORE ticking Enable, showing
-     Access Manager, Sudo User, and the two protected-role tables filled in. -->
-![ITGC Settings — Manage Access tab](images/ma-settings.png)
+<!-- IMAGE: ma-settings-1.png — top of ITGC Settings -> Manage Access tab: Enable Manage Access,
+     Access Manager, and the Access Manager Role Holders table. -->
+![ITGC Settings — Manage Access tab (top)](../.github/images/ma-settings-1.png)
+
+<!-- IMAGE: ma-settings-2.png — lower part of the same tab: Sudo User and the two
+     protected-role tables (Fully Restricted / Approval-Gated). -->
+![ITGC Settings — Manage Access tab (Critical Role Protection)](../.github/images/ma-settings-2.png)
 
 ### Step 3 — Enable
 
@@ -296,4 +299,4 @@ the record is read-only (audit trail).
 
 ---
 
-See also: **[Manage Change →](MANAGE_CHANGE.md)** · **[Docs index →](README.md)**
+See also: **[Manage Change →](MANAGE_CHANGE.md)** · **[Overview / README →](../README.md)**
