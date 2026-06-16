@@ -83,6 +83,7 @@ app_license = "mit"
 # ------------
 
 after_install = "itgc.install.after_install"
+after_migrate = "itgc.install.after_migrate"
 
 # Uninstallation
 # ------------

@@ -12,6 +12,7 @@ frappe.ui.form.on("Manage Access", {
 	refresh(frm) {
 		set_request_for_query(frm);
 		restrict_request_type_options(frm);
+		filter_protected_roles(frm);
 	},
 
 	document_type(frm) {
@@ -137,6 +138,26 @@ function restrict_request_type_options(frm) {
 		.split("\n")
 		.filter((opt) => !hidden.includes(opt));
 	frm.set_df_property("request_type", "options", options.join("\n"));
+}
+
+function filter_protected_roles(frm) {
+	// Hide only FULLY-RESTRICTED roles (e.g. System Manager) from the Role pickers
+	// unless the user may grant them (Sudo User / System Manager). Approval-Gated
+	// roles (e.g. ITGC Access Manager) stay visible so anyone can request them — the
+	// grant is gated server-side at approval time. UX only; the server re-enforces.
+	frappe.call({
+		method: "itgc.itgc.doctype.manage_access.manage_access.get_protected_role_context",
+		callback(r) {
+			const ctx = r.message || {};
+			const hidden = ctx.hidden_roles || [];
+			const role_query =
+				ctx.may_grant || !hidden.length
+					? () => ({})
+					: () => ({ filters: { name: ["not in", hidden] } });
+			frm.set_query("role", role_query);
+			frm.set_query("perm_role", role_query);
+		},
+	});
 }
 
 function set_request_for_query(frm) {

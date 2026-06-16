@@ -7,25 +7,34 @@ ACCESS_MANAGER_ROLE = "ITGC Access Manager"
 
 
 def ensure_access_manager_role(doc, method=None):
-	"""Re-assert the ITGC Access Manager role for the configured access manager.
+	"""Re-assert the ITGC Access Manager role for the privileged users.
+
+	The "privileged" users are the configured Access Manager and the Sudo User:
+	both must hold the ITGC Access Manager role so they can act on the Manage
+	Access approval workflow (the Access Manager approves normal requests; the
+	Sudo User approves protected-role grants).
 
 	Runs as a `User` validate doc-event, i.e. AFTER Frappe core's
-	`populate_role_profile_roles()` has reset the roles table to match the
-	user's Role Profile. For role-profile users that sync wipes any ad-hoc
-	role, so without this the access manager would silently lose the role on
-	every save. Here we append it back when this user is the one selected in
-	ITGC Settings, making the assignment self-healing.
+	`populate_role_profile_roles()` has reset the roles table to match the user's
+	Role Profile. For role-profile users that sync wipes any ad-hoc role, so
+	without this they would silently lose the role on every save. Here we append it
+	back, making the assignment self-healing.
 	"""
 	# During an ITGC Settings save the new value may not yet be readable here
-	# (single-value cache), so the settings controller passes it explicitly via
-	# this flag. For every other User save we read the committed value.
-	access_manager = frappe.flags.get("itgc_access_manager", False)
-	if access_manager is False:
+	# (single-value cache), so the settings controller passes the user explicitly
+	# via this flag. For every other User save we read the committed values.
+	privileged = frappe.flags.get("itgc_access_manager", False)
+	if privileged is False:
 		if not frappe.db.get_single_value("ITGC Settings", "enable_manage_access"):
 			return
-		access_manager = frappe.db.get_single_value("ITGC Settings", "access_manager")
+		privileged = {
+			frappe.db.get_single_value("ITGC Settings", "access_manager"),
+			frappe.db.get_single_value("ITGC Settings", "sudo_user"),
+		}
+	else:
+		privileged = {privileged}
 
-	if not access_manager or doc.name != access_manager:
+	if not doc.name or doc.name not in privileged:
 		return
 
 	if ACCESS_MANAGER_ROLE not in {r.role for r in doc.get("roles")}:

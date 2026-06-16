@@ -9,6 +9,10 @@
   "html_xhwo",
   "access_manager",
   "access_manager_role_holders",
+  "protected_roles_section",
+  "sudo_user",
+  "restricted_roles",
+  "approval_gated_roles",
   "manage_change_tab",
   "manage_change_api_section",
   "enable_change_management",
@@ -70,6 +74,36 @@
    "fieldname": "access_manager_role_holders",
    "fieldtype": "HTML",
    "label": "Access Manager Role Holders"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "fieldname": "protected_roles_section",
+   "fieldtype": "Section Break",
+   "label": "Critical Role Protection"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "description": "Break-glass account. Together with System Manager holders, this is the only user who may GRANT (approve) the protected roles below. Auto-granted the 'ITGC Access Manager' role so it can act on the approval workflow. Required for Approval-Gated roles to be approvable.",
+   "fieldname": "sudo_user",
+   "fieldtype": "Link",
+   "label": "Sudo User",
+   "options": "User"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "description": "FULLY RESTRICTED roles (e.g. System Manager). Hidden from the role pickers for everyone except the Sudo User / System Managers, and only they may RAISE a request granting one (enforced server-side, including via a Role Profile). Seeded with System Manager.",
+   "fieldname": "restricted_roles",
+   "fieldtype": "Table",
+   "label": "Fully Restricted Roles",
+   "options": "Has Role"
+  },
+  {
+   "depends_on": "eval:doc.enable_manage_access",
+   "description": "APPROVAL-GATED roles (e.g. ITGC Access Manager). Anyone may REQUEST them, but only the Sudo User / a System Manager may APPROVE (grant) the request, and such requests are routed to those approvers. Seeded with ITGC Access Manager.",
+   "fieldname": "approval_gated_roles",
+   "fieldtype": "Table",
+   "label": "Approval-Gated Roles",
+   "options": "Has Role"
   },
   {
    "default": "0",

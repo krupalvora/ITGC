@@ -10,8 +10,38 @@ ACCESS_MANAGER_ROLE = "ITGC Access Manager"
 class ITGCSettings(Document):
 	def on_update(self):
 		self.sync_access_manager_role()
+		self.sync_sudo_user_role()
 		self.sync_change_management_workflow()
 		self.sync_manage_access_workflow()
+
+	def sync_sudo_user_role(self):
+		"""Ensure the Sudo User can operate the Manage Access approval workflow.
+
+		Protected-role approvals go through the workflow whose 'allowed' role is
+		'ITGC Access Manager' (Frappe checks the role strictly — even a System
+		Manager cannot act on a transition without it). The Sudo User is the
+		designated approver for protected-role grants, so it is granted that role
+		here.
+
+		Grant-only: we never strip it on change, to avoid removing the role from a
+		user who holds it for another reason (e.g. they are also a department Access
+		Manager). The grant self-heals on every User save via
+		itgc.overrides.user.ensure_access_manager_role.
+		"""
+		if not self.sudo_user or not frappe.db.exists("User", self.sudo_user):
+			return
+		if ACCESS_MANAGER_ROLE in frappe.get_roles(self.sudo_user):
+			return
+
+		frappe.flags.in_manage_access = True
+		try:
+			frappe.flags.itgc_access_manager = self.sudo_user
+			try:
+				frappe.get_doc("User", self.sudo_user).add_roles(ACCESS_MANAGER_ROLE)
+			finally:
+				frappe.flags.itgc_access_manager = False
+		finally:
+			frappe.flags.in_manage_access = False
 
 	def sync_manage_access_workflow(self):
 		"""Keep the Manage Access approval workflow's active state in sync.

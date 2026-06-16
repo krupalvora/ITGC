@@ -117,8 +117,27 @@ class ManageAccess(Document):
 		requester is the department's only approver, or no department is set), we
 		append the global Access Manager from ITGC Settings as a fallback so the
 		request is never stuck.
+
+		Protected-role grants override this: only the Sudo User / System Managers
+		may approve them, so the approver list is the set of authorised approvers
+		(see `_protected_role_approvers`), not the department's Access Managers.
 		"""
 		self.set("approver", [])
+
+		if get_protected_roles() & self._roles_granted_by_request():
+			approvers = list(dict.fromkeys(self._protected_role_approvers()))
+			for user in approvers:
+				self.append("approver", {"user": user})
+			if not approvers:
+				frappe.msgprint(
+					_(
+						"No eligible approver for this protected-role request. "
+						"Set a Sudo User in ITGC Settings so it can be approved."
+					),
+					indicator="orange",
+					alert=True,
+				)
+			return
 
 		users = []
 		if self.department:
@@ -140,6 +159,11 @@ class ManageAccess(Document):
 			self.append("approver", {"user": user})
 
 	def before_submit(self):
+		# Granting a protected role may only be APPROVED by the Sudo User or a
+		# System Manager. before_submit runs as the approver acts (docstatus 0->1),
+		# so frappe.session.user here is the approver.
+		self._guard_protected_role_approval()
+
 		# Snapshot the role's current permissions on this doctype for the audit
 		# trail, BEFORE apply() mutates them in on_submit.
 		if self.request_type == CHANGE_DOC_PERM:
@@ -179,6 +203,13 @@ class ManageAccess(Document):
 		if not self.request_type:
 			frappe.throw(_("Request Type is required."))
 
+		# A FULLY RESTRICTED role (e.g. System Manager) may only be REQUESTED by the
+		# Sudo User or a System Manager — including when pulled in via a Role Profile.
+		# (Approval-Gated roles can be requested by anyone; they are instead gated at
+		# approval time in before_submit.) Checked up front so it covers every grant
+		# path and the REST API, before the per-type early returns below.
+		self._guard_restricted_role_request()
+
 		# Change Doctype Permission: Doctype + Role are required, no subject user.
 		if self.request_type == CHANGE_DOC_PERM:
 			if not self.document_type or not self.perm_role:
@@ -210,6 +241,12 @@ class ManageAccess(Document):
 		if self.request_type in ACCESS_MANAGER_ONLY_TYPES and self.is_new():
 			self._require_access_manager()
 
+		# A revoke/disable must not strip the last active holder of a protected role
+		# (e.g. the last System Manager) — that would lock everyone out. Re-checked on
+		# every save, so it still holds at approval time if the role state has changed.
+		if self.request_type in ACCESS_MANAGER_ONLY_TYPES:
+			self._guard_protected_role_lockout()
+
 		if not self.request_for:
 			frappe.throw(_("Please select the user in 'For User'."))
 
@@ -223,16 +260,148 @@ class ManageAccess(Document):
 			frappe.throw(_("Please select a Role Profile."))
 
 	def _require_access_manager(self):
-		"""Only an ITGC Access Manager (or System Manager) may raise the admin actions
-		in ACCESS_MANAGER_ONLY_TYPES — they act on another user's access."""
-		roles = frappe.get_roles(frappe.session.user)
-		if "System Manager" not in roles and ACCESS_MANAGER_ROLE not in roles:
-			frappe.throw(
-				_("Only an ITGC Access Manager can raise a {0} request.").format(
-					frappe.bold(self.request_type)
-				),
-				frappe.PermissionError,
-			)
+		"""Only an ITGC Access Manager, a System Manager, or the Sudo User may raise
+		the admin actions in ACCESS_MANAGER_ONLY_TYPES — they act on another user's
+		access. The Sudo User is included so the people who can SEE protected roles
+		(Sudo User / System Manager) can also revoke them."""
+		if ACCESS_MANAGER_ROLE in frappe.get_roles(frappe.session.user):
+			return
+		if _may_grant_protected_roles(frappe.session.user):
+			return
+		frappe.throw(
+			_("Only an ITGC Access Manager, a System Manager, or the Sudo User can raise a {0} request.").format(
+				frappe.bold(self.request_type)
+			),
+			frappe.PermissionError,
+		)
+
+	def _guard_restricted_role_request(self):
+		"""Block REQUESTING a fully-restricted role unless the requester may grant it.
+
+		Fully-restricted roles (ITGC Settings -> Fully Restricted Roles, e.g. System
+		Manager) may only be requested by the Sudo User or a System Manager. Covers
+		direct grants (`role`) and roles pulled in via a Role Profile, so a profile
+		containing one can't be used as a bypass.
+
+		Approval-Gated roles are intentionally NOT blocked here — anyone may request
+		them; they are gated at approval time (`_guard_protected_role_approval`).
+
+		Authorisation is evaluated against the REQUESTER (`self.user`), not the
+		session user, so the check is stable across the approver's workflow saves.
+		"""
+		granted = self._roles_granted_by_request()
+		if not granted:
+			return
+
+		restricted = get_restricted_roles() & granted
+		if not restricted:
+			return
+
+		if _may_grant_protected_roles(self.user):
+			return
+
+		frappe.throw(
+			_("Only the Sudo User or a System Manager may request the fully-restricted role(s): {0}.").format(
+				frappe.bold(", ".join(sorted(restricted)))
+			),
+			frappe.PermissionError,
+		)
+
+	def _guard_protected_role_approval(self):
+		"""Block APPROVING a protected-role grant unless the approver may grant it.
+
+		Applies to BOTH tiers (Fully Restricted + Approval-Gated): the user actually
+		approving the request (frappe.session.user at submit) must be the Sudo User
+		or a System Manager. This is the real grant gate — `_sync_approver_from_department`
+		routes such requests to authorised approvers, and this enforces it server-side
+		even if the workflow/approver table is bypassed.
+		"""
+		granted = self._roles_granted_by_request()
+		if not granted:
+			return
+
+		protected = get_protected_roles() & granted
+		if not protected:
+			return
+
+		if _may_grant_protected_roles(frappe.session.user):
+			return
+
+		frappe.throw(
+			_("Only the Sudo User or a System Manager may approve a grant of the protected role(s): {0}.").format(
+				frappe.bold(", ".join(sorted(protected)))
+			),
+			frappe.PermissionError,
+		)
+
+	def _protected_role_approvers(self):
+		"""Users allowed to approve a protected-role grant.
+
+		Must satisfy BOTH gates: hold the ITGC Access Manager role (so they can act
+		on the approval workflow — Frappe checks the transition's `allowed` role
+		strictly) AND be able to grant protected roles (Sudo User / System Manager).
+		The Sudo User is auto-granted the ITGC Access Manager role, so it always
+		qualifies once configured.
+		"""
+		am_holders = _enabled_role_holders(ACCESS_MANAGER_ROLE)
+		return sorted(u for u in am_holders if _may_grant_protected_roles(u))
+
+	def _roles_granted_by_request(self):
+		"""The set of roles this request would ADD to a user.
+
+		Empty for revoke / disable / doc-perm requests (those don't mint a role onto
+		a user). Role Profile requests expand to the profile's roles; Create/Modify
+		Role Profile expand to the roles in the table being applied.
+		"""
+		roles = set()
+		if self.request_type in (NEW_USER, REQUEST_ROLE) and self.role:
+			roles.add(self.role)
+		if self.request_type in (NEW_USER, REQUEST_ROLE_PROFILE) and self.role_profile:
+			roles |= _role_profile_roles(self.role_profile)
+		if self.request_type in (CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE):
+			roles |= {r.role for r in (self.profile_roles or []) if r.role}
+		return roles
+
+	def _guard_protected_role_lockout(self):
+		"""Block a revoke/disable that would remove the last ACTIVE holder of a
+		protected role (e.g. the last System Manager).
+
+		Only the protected roles the target actually holds are considered, and only
+		those this request would strip: the role itself (Revoke Role), the protected
+		roles inside the profile (Revoke Role Profile), or every held protected role
+		(Disable User). If no other enabled user would still hold the role afterwards,
+		the request is refused.
+		"""
+		protected = get_protected_roles()
+		if not protected:
+			return
+
+		target = self.target_user
+		if not target:
+			return
+
+		held = _user_roles(target) & protected
+		if not held:
+			return
+
+		if self.request_type == REVOKE_ROLE:
+			removing = {self.role} & held
+		elif self.request_type == REVOKE_ROLE_PROFILE:
+			removing = _role_profile_roles(self.role_profile) & held
+		elif self.request_type == DISABLE_USER:
+			removing = held
+		else:
+			return
+
+		for role in sorted(removing):
+			if not _enabled_role_holders(role, exclude_user=target):
+				frappe.throw(
+					_(
+						"This would remove the last active holder of the protected role {0}. "
+						"Grant it to another active user first."
+					).format(frappe.bold(role)),
+					frappe.ValidationError,
+				)
 
 	# -------------------------------------------------------------------- apply
 	def apply(self):
@@ -448,3 +617,94 @@ def get_role_profile_roles(role_profile):
 		order_by="idx asc",
 	)
 	return [{"role": r.role} for r in roles]
+
+
+# --------------------------------------------------------- protected-role helpers
+def _settings_roles(parentfield):
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"parenttype": "ITGC Settings", "parentfield": parentfield},
+		pluck="role",
+	)
+	return {r for r in rows if r}
+
+
+def get_restricted_roles():
+	"""Fully-restricted roles (hidden in picker; only Sudo/SM may request)."""
+	return _settings_roles("restricted_roles")
+
+
+def get_approval_gated_roles():
+	"""Approval-gated roles (anyone may request; only Sudo/SM may approve)."""
+	return _settings_roles("approval_gated_roles")
+
+
+def get_protected_roles():
+	"""All protected roles across both tiers (used by the approval + lockout gates)."""
+	return get_restricted_roles() | get_approval_gated_roles()
+
+
+def _role_profile_roles(role_profile):
+	"""The set of roles contained in a Role Profile."""
+	if not role_profile:
+		return set()
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"parent": role_profile, "parenttype": "Role Profile"},
+		pluck="role",
+	)
+	return {r for r in rows if r}
+
+
+def _user_roles(user):
+	"""The set of roles currently assigned to a user (materialised in Has Role)."""
+	if not user:
+		return set()
+	rows = frappe.get_all(
+		"Has Role",
+		filters={"parent": user, "parenttype": "User"},
+		pluck="role",
+	)
+	return {r for r in rows if r}
+
+
+def _enabled_role_holders(role, exclude_user=None):
+	"""Enabled users who hold `role`, excluding `exclude_user`."""
+	holders = set(
+		frappe.get_all(
+			"Has Role",
+			filters={"parenttype": "User", "role": role},
+			pluck="parent",
+		)
+	)
+	holders.discard(exclude_user)
+	if not holders:
+		return []
+	return frappe.get_all(
+		"User",
+		filters={"name": ["in", list(holders)], "enabled": 1},
+		pluck="name",
+	)
+
+
+def _may_grant_protected_roles(user):
+	"""True if `user` may grant protected roles: a System Manager, or the configured
+	Sudo User (break-glass) in ITGC Settings."""
+	if "System Manager" in frappe.get_roles(user):
+		return True
+	sudo = frappe.db.get_single_value("ITGC Settings", "sudo_user")
+	return bool(sudo) and user == sudo
+
+
+@frappe.whitelist()
+def get_protected_role_context():
+	"""Form helper: which roles to HIDE from the role pickers, and whether the
+	current user may pick them anyway.
+
+	Only FULLY-RESTRICTED roles are hidden; Approval-Gated roles stay visible so
+	anyone can request them (their grant is gated server-side at approval time).
+	UX only — the real gates are the server-side guards in ManageAccess."""
+	return {
+		"hidden_roles": sorted(get_restricted_roles()),
+		"may_grant": _may_grant_protected_roles(frappe.session.user),
+	}

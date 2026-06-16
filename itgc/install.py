@@ -6,6 +6,13 @@ import frappe
 ACCESS_MANAGER_ROLE = "ITGC Access Manager"
 MANAGE_ACCESS_DOCTYPE = "Manage Access"
 
+# Protected-role defaults, seeded into ITGC Settings when each table is empty (an
+# admin can customise afterwards). Two tiers:
+#   - Fully Restricted: hidden in the picker; only Sudo/SM may even REQUEST them.
+#   - Approval-Gated: anyone may REQUEST; only Sudo/SM may APPROVE (grant) them.
+DEFAULT_RESTRICTED_ROLES = ("System Manager",)
+DEFAULT_APPROVAL_GATED_ROLES = (ACCESS_MANAGER_ROLE,)
+
 # --- Manage Change governance ---------------------------------------------
 MANAGE_CHANGE_DOCTYPE = "Manage Change"
 # Holders may raise (create) a Manage Change, but never approve one.
@@ -114,6 +121,51 @@ def after_install():
 	grant_manage_change_permissions()
 	ensure_manage_change_workflow()
 	ensure_manage_access_workflow()
+	seed_protected_roles()
+
+
+def after_migrate():
+	"""Reconcile config that lives in records (not the doctype JSON) on every migrate.
+
+	Idempotent — each step no-ops when already in the desired state.
+	"""
+	create_itgc_roles()
+	seed_protected_roles()
+
+
+def seed_protected_roles():
+	"""Seed ITGC Settings -> Fully Restricted / Approval-Gated roles with the
+	critical defaults when empty.
+
+	Fail-secure and idempotent: each tier is filled only when it has no rows, so an
+	admin's customised lists are never overwritten, while a site that has never been
+	configured still gets System Manager restricted and ITGC Access Manager gated out
+	of the box.
+	"""
+	if not frappe.db.exists("DocType", "ITGC Settings"):
+		return
+
+	settings = frappe.get_single("ITGC Settings")
+	dirty = False
+
+	tiers = (
+		("restricted_roles", DEFAULT_RESTRICTED_ROLES),
+		("approval_gated_roles", DEFAULT_APPROVAL_GATED_ROLES),
+	)
+	for fieldname, defaults in tiers:
+		if settings.get(fieldname):
+			continue
+		for role in defaults:
+			if frappe.db.exists("Role", role):
+				settings.append(fieldname, {"role": role})
+				dirty = True
+
+	if not dirty:
+		return
+
+	settings.flags.ignore_permissions = True
+	settings.save(ignore_permissions=True)
+	frappe.db.commit()
 
 
 def create_itgc_roles():
