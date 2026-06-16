@@ -3,7 +3,21 @@
 Information Technology General Controls — a Frappe app for access governance
 (Manage Access) and change management (the Manage Change merge gate).
 
----test
+## Documentation
+
+Detailed setup-and-usage guides (with worked examples and screenshots) live in
+[`docs/`](docs/):
+
+- **[Docs index](docs/README.md)** — overview, install, and how the pieces fit.
+- **[Manage Access](docs/MANAGE_ACCESS.md)** — access-governance setup: the
+  approval workflow, the access-master lockdown, protected roles, and approver
+  routing.
+- **[Manage Change](docs/MANAGE_CHANGE.md)** — change-management setup: the
+  approval workflow plus the full GitHub Actions merge-gate configuration.
+
+The section below is a condensed quick-reference for the merge gate; the
+[Manage Change guide](docs/MANAGE_CHANGE.md) covers it in full.
+
 
 ## Manage Change merge gate — setup
 
