@@ -6,7 +6,7 @@
 When ITGC Settings -> `enable_manage_access` is ON, the Manage Access submit flow
 is the ONLY sanctioned way to change access. These guards block every *human
 frontend* write to the underlying masters (User roles / role profile, Role, Role
-Profile, Custom DocPerm) and to the Doctype Permissions page.
+Profile, Custom DocPerm, User Permission) and to the Doctype Permissions page.
 
 The guards intentionally do NOT fire for:
   - the Manage Access apply path (`frappe.flags.in_manage_access`),

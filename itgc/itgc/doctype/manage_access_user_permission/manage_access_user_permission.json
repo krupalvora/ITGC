@@ -1,0 +1,87 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-16 00:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "allow",
+  "for_value",
+  "apply_to_all_doctypes",
+  "applicable_for",
+  "column_break_perm",
+  "is_default",
+  "hide_descendants"
+ ],
+ "fields": [
+  {
+   "columns": 2,
+   "description": "The doctype the permission restricts on (e.g. Warehouse, Company).",
+   "fieldname": "allow",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Allow (Doctype)",
+   "options": "DocType",
+   "reqd": 1
+  },
+  {
+   "columns": 3,
+   "description": "The specific record the user is limited to (e.g. Bareilly WH - SSE).",
+   "fieldname": "for_value",
+   "fieldtype": "Dynamic Link",
+   "in_list_view": 1,
+   "label": "For Value",
+   "options": "allow",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "description": "Apply this restriction across every doctype that links to 'Allow'. Untick to scope it to a single 'Applicable For' doctype.",
+   "fieldname": "apply_to_all_doctypes",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Apply to all Doctypes"
+  },
+  {
+   "depends_on": "eval:!doc.apply_to_all_doctypes",
+   "description": "When not applying to all doctypes, the single doctype this restriction is scoped to.",
+   "fieldname": "applicable_for",
+   "fieldtype": "Link",
+   "label": "Applicable For",
+   "mandatory_depends_on": "eval:!doc.apply_to_all_doctypes",
+   "options": "DocType"
+  },
+  {
+   "fieldname": "column_break_perm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "description": "Set this value as the user's default for the 'Allow' doctype.",
+   "fieldname": "is_default",
+   "fieldtype": "Check",
+   "label": "Is Default"
+  },
+  {
+   "default": "0",
+   "description": "For tree (nested) doctypes, do not auto-include child records of the value.",
+   "fieldname": "hide_descendants",
+   "fieldtype": "Check",
+   "label": "Hide Descendants"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-06-16 00:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "ITGC",
+ "name": "Manage Access User Permission",
+ "owner": "Administrator",
+ "permissions": [],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

@@ -163,6 +163,86 @@ class TestManageAccess(FrappeTestCase):
 		doc.save(ignore_permissions=True)  # owner == session user → allowed
 		self.assertEqual(doc.role, "Guest")
 
+	# ----------------------------------------------------- user permissions
+	def _up_row(self, **kwargs):
+		row = {"allow": "User", "for_value": "Administrator", "apply_to_all_doctypes": 1}
+		row.update(kwargs)
+		return row
+
+	def test_request_user_permission_requires_a_row(self):
+		doc = self._new_request(
+			request_type="Request User Permission", request_for="Administrator"
+		)
+		with self.assertRaises(frappe.ValidationError):
+			doc.insert(ignore_permissions=True)
+
+	def test_request_user_permission_row_requires_allow_and_value(self):
+		doc = self._new_request(
+			request_type="Request User Permission", request_for="Administrator"
+		)
+		doc.append("user_permissions", {"allow": "User", "apply_to_all_doctypes": 1})
+		with self.assertRaises(frappe.ValidationError):
+			doc.insert(ignore_permissions=True)
+
+	def test_scoped_row_requires_applicable_for(self):
+		doc = self._new_request(
+			request_type="Request User Permission", request_for="Administrator"
+		)
+		doc.append("user_permissions", self._up_row(apply_to_all_doctypes=0))
+		with self.assertRaises(frappe.ValidationError):
+			doc.insert(ignore_permissions=True)
+
+	def test_valid_request_user_permission_passes_validation(self):
+		dept = _make_department("ITGC-Test-Dept-UP", ["Guest"])
+		doc = self._new_request(request_type="Request User Permission", department=dept)
+		doc.append("user_permissions", self._up_row())
+		doc.insert(ignore_permissions=True)  # must not raise
+		self.assertEqual(doc.request_for, frappe.session.user)  # self-service default
+
+	def test_apply_creates_and_revoke_removes_user_permission(self):
+		"""apply() must mint the User Permission, and the revoke path remove it.
+
+		Calls the apply handlers directly with the sanctioned-writer flag set, exactly
+		as on_submit does, so the access-master guard does not block the writes.
+		"""
+		target = "Administrator"
+		allow, for_value = "User", "Guest"
+		dept = _make_department("ITGC-Test-Dept-UP2", ["Guest"])
+		frappe.db.delete(
+			"User Permission", {"user": target, "allow": allow, "for_value": for_value}
+		)
+
+		grant = self._new_request(
+			request_type="Request User Permission", request_for=target, department=dept
+		)
+		grant.append("user_permissions", self._up_row(for_value=for_value))
+		grant.insert(ignore_permissions=True)
+
+		frappe.flags.in_manage_access = True
+		try:
+			grant.apply_request_user_permission()
+			self.assertTrue(
+				frappe.db.exists(
+					"User Permission",
+					{"user": target, "allow": allow, "for_value": for_value},
+				)
+			)
+
+			revoke = self._new_request(
+				request_type="Revoke User Permission", request_for=target, department=dept
+			)
+			revoke.append("user_permissions", self._up_row(for_value=for_value))
+			revoke.insert(ignore_permissions=True)
+			revoke.apply_revoke_user_permission()
+			self.assertFalse(
+				frappe.db.exists(
+					"User Permission",
+					{"user": target, "allow": allow, "for_value": for_value},
+				)
+			)
+		finally:
+			frappe.flags.in_manage_access = False
+
 	def test_new_user_query_includes_website_users_without_role_profile(self):
 		"""The 'New User' link query keys on absence of a Role Profile, not user_type.
 

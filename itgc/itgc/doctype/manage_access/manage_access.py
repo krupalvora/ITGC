@@ -15,17 +15,22 @@ REVOKE_ROLE_PROFILE = "Revoke Role Profile"
 CHANGE_DOC_PERM = "Change Doctype Permission"  # System-Manager-only doc-perm change
 CREATE_ROLE_PROFILE = "Create Role Profile"  # System-Manager-only: create a Role Profile
 MODIFY_ROLE_PROFILE = "Modify Role Profile"  # System-Manager-only: edit a Role Profile's roles
+REQUEST_USER_PERMISSION = "Request User Permission"  # value-level access grant (self-service)
+REVOKE_USER_PERMISSION = "Revoke User Permission"  # value-level access revoke (admin-on-behalf)
 
 # Types that do not act on a subject user (request_for). Create/Modify Role Profile
 # act on the Role Profile itself; core's update_all_users() re-syncs assigned users.
 NO_SUBJECT_TYPES = (NEW_USER, DISABLE_USER, CHANGE_DOC_PERM, CREATE_ROLE_PROFILE, MODIFY_ROLE_PROFILE)
 
 # Revoke types are raised FOR another user, never auto-defaulted to the requester.
-REVOKE_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE)
+REVOKE_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE, REVOKE_USER_PERMISSION)
 
 # Admin actions that only an ITGC Access Manager (or System Manager) may raise, and
 # that always target another user — not self-service.
-ACCESS_MANAGER_ONLY_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE, DISABLE_USER)
+ACCESS_MANAGER_ONLY_TYPES = (REVOKE_ROLE, REVOKE_ROLE_PROFILE, DISABLE_USER, REVOKE_USER_PERMISSION)
+
+# Request types whose substance is the `user_permissions` child table.
+USER_PERMISSION_TYPES = (REQUEST_USER_PERMISSION, REVOKE_USER_PERMISSION)
 
 # Role whose holders can grant/revoke access (see itgc/install.py).
 ACCESS_MANAGER_ROLE = "ITGC Access Manager"
@@ -259,6 +264,34 @@ class ManageAccess(Document):
 		if self.request_type in (REQUEST_ROLE_PROFILE, REVOKE_ROLE_PROFILE) and not self.role_profile:
 			frappe.throw(_("Please select a Role Profile."))
 
+		if self.request_type in USER_PERMISSION_TYPES:
+			self._validate_user_permission_rows()
+
+	def _validate_user_permission_rows(self):
+		"""Each User Permission row needs an Allow doctype + a For Value, and an
+		Applicable For doctype whenever it is not applied to all doctypes.
+
+		Enforced in `validate` (not just the form) so the REST API path is covered.
+		The subject user is the request's `request_for`; the rows carry no user of
+		their own, so a request can never grant a permission to someone else's account.
+		"""
+		if not self.user_permissions:
+			frappe.throw(_("Add at least one User Permission row (Allow + For Value)."))
+
+		for row in self.user_permissions:
+			if not row.allow or not row.for_value:
+				frappe.throw(
+					_("Each User Permission row needs both 'Allow' (doctype) and 'For Value'.")
+				)
+			if not frappe.db.exists("DocType", row.allow):
+				frappe.throw(_("'Allow' doctype {0} does not exist.").format(frappe.bold(row.allow)))
+			if not row.apply_to_all_doctypes and not row.applicable_for:
+				frappe.throw(
+					_(
+						"Set an 'Applicable For' doctype or tick 'Apply to all Doctypes' for {0} = {1}."
+					).format(frappe.bold(row.allow), frappe.bold(row.for_value))
+				)
+
 	def _require_access_manager(self):
 		"""Only an ITGC Access Manager, a System Manager, or the Sudo User may raise
 		the admin actions in ACCESS_MANAGER_ONLY_TYPES — they act on another user's
@@ -418,6 +451,8 @@ class ManageAccess(Document):
 			REVOKE_ROLE_PROFILE: self.apply_revoke_role_profile,
 			CREATE_ROLE_PROFILE: self.apply_create_role_profile,
 			MODIFY_ROLE_PROFILE: self.apply_modify_role_profile,
+			REQUEST_USER_PERMISSION: self.apply_request_user_permission,
+			REVOKE_USER_PERMISSION: self.apply_revoke_user_permission,
 		}
 		handler = handlers.get(self.request_type)
 		if not handler:
@@ -478,6 +513,53 @@ class ManageAccess(Document):
 			rp.append("roles", {"role": r.role})
 		rp.flags.ignore_permissions = True
 		rp.save()
+
+	def apply_request_user_permission(self):
+		"""Create the requested User Permission records for the subject user.
+
+		Idempotent: an identical permission (same user / allow / for_value / scope) is
+		left untouched so re-applying never duplicates. Runs with `in_manage_access`
+		set (see on_submit), so the access-master guard treats these as sanctioned
+		writes rather than blocking them.
+		"""
+		user = self.target_user
+		for row in self.user_permissions:
+			applicable_for = None if row.apply_to_all_doctypes else row.applicable_for
+			existing = frappe.db.exists(
+				"User Permission",
+				{
+					"user": user,
+					"allow": row.allow,
+					"for_value": row.for_value,
+					"applicable_for": applicable_for,
+				},
+			)
+			if existing:
+				continue
+			up = frappe.new_doc("User Permission")
+			up.user = user
+			up.allow = row.allow
+			up.for_value = row.for_value
+			up.apply_to_all_doctypes = 1 if row.apply_to_all_doctypes else 0
+			up.applicable_for = applicable_for
+			up.is_default = 1 if row.is_default else 0
+			up.hide_descendants = 1 if row.hide_descendants else 0
+			up.flags.ignore_permissions = True
+			up.insert()
+
+	def apply_revoke_user_permission(self):
+		"""Delete the User Permission records matching each row for the subject user.
+
+		Matches on user / allow / for_value (and Applicable For when the row is scoped
+		to a single doctype) so a revoke removes exactly what a matching grant created.
+		"""
+		user = self.target_user
+		for row in self.user_permissions:
+			filters = {"user": user, "allow": row.allow, "for_value": row.for_value}
+			if not row.apply_to_all_doctypes and row.applicable_for:
+				filters["applicable_for"] = row.applicable_for
+			for name in frappe.get_all("User Permission", filters=filters, pluck="name"):
+				frappe.delete_doc("User Permission", name, ignore_permissions=True, force=True)
 
 	# Maps Manage Access checkbox fields -> Custom DocPerm permission properties.
 	DOC_PERM_RIGHTS = {

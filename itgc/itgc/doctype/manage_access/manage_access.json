@@ -45,7 +45,10 @@
   "manage_role_profile_tab",
   "new_role_profile_name",
   "target_role_profile",
-  "profile_roles"
+  "profile_roles",
+  "user_permission_tab",
+  "user_permissions_section",
+  "user_permissions"
  ],
  "fields": [
   {
@@ -69,7 +72,7 @@
    "label": "For User",
    "mandatory_depends_on": "eval:doc.request_type && !['Change Doctype Permission','Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
    "options": "User",
-   "read_only_depends_on": "eval:!['New User','Disable User','Revoke Role','Revoke Role Profile'].includes(doc.request_type)"
+   "read_only_depends_on": "eval:!['New User','Disable User','Revoke Role','Revoke Role Profile','Revoke User Permission'].includes(doc.request_type)"
   },
   {
    "fieldname": "column_break_jwou",
@@ -79,7 +82,7 @@
    "fieldname": "request_type",
    "fieldtype": "Select",
    "label": "Request Type",
-   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile\nChange Doctype Permission\nCreate Role Profile\nModify Role Profile",
+   "options": "\nNew User\nRequest Role\nRequest Role Profile\nDisable User\nRevoke Role\nRevoke Role Profile\nChange Doctype Permission\nCreate Role Profile\nModify Role Profile\nRequest User Permission\nRevoke User Permission",
    "reqd": 1
   },
   {
@@ -338,6 +341,26 @@
    "label": "Roles",
    "mandatory_depends_on": "eval:['Create Role Profile','Modify Role Profile'].includes(doc.request_type)",
    "options": "Has Role"
+  },
+  {
+   "depends_on": "eval:['Request User Permission','Revoke User Permission'].includes(doc.request_type)",
+   "fieldname": "user_permission_tab",
+   "fieldtype": "Tab Break",
+   "label": "User Permission"
+  },
+  {
+   "description": "Grant (or revoke) value-level access for the selected user. Each row limits the user to a specific record of a doctype (e.g. Warehouse = Bareilly WH - SSE). On approval, matching User Permission records are created (Request) or removed (Revoke) for the user. Routed for approval to the selected Department's Access Managers, exactly like a role request.",
+   "fieldname": "user_permissions_section",
+   "fieldtype": "Section Break",
+   "label": "User Permissions"
+  },
+  {
+   "depends_on": "eval:['Request User Permission','Revoke User Permission'].includes(doc.request_type)",
+   "fieldname": "user_permissions",
+   "fieldtype": "Table",
+   "label": "User Permissions",
+   "mandatory_depends_on": "eval:['Request User Permission','Revoke User Permission'].includes(doc.request_type)",
+   "options": "Manage Access User Permission"
   }
  ],
  "index_web_pages_for_search": 1,

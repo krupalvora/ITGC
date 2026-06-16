@@ -39,12 +39,14 @@ frappe.ui.form.on("Manage Access", {
 		frm.set_value("target_role_profile", null);
 		frm.clear_table("profile_roles");
 		frm.refresh_field("profile_roles");
+		frm.clear_table("user_permissions");
+		frm.refresh_field("user_permissions");
 
 		// Types that target someone else (or no user) -> blank, so the requester picks
 		// the subject. Create/Modify Role Profile act on the profile itself; New User /
 		// Disable User and the revoke types are raised FOR another user. The remaining
-		// self-oriented types (Request Role / Request Role Profile) default to the
-		// current user (still editable).
+		// self-oriented types (Request Role / Request Role Profile / Request User
+		// Permission) default to the current user (still editable).
 		const not_self = [
 			"New User",
 			"Disable User",
@@ -53,6 +55,7 @@ frappe.ui.form.on("Manage Access", {
 			"Modify Role Profile",
 			"Revoke Role",
 			"Revoke Role Profile",
+			"Revoke User Permission",
 		];
 		if (not_self.includes(frm.doc.request_type)) {
 			frm.set_value("request_for", null);
@@ -131,7 +134,12 @@ function restrict_request_type_options(frm) {
 	// Revoke / Disable act on another user's access — only ITGC Access Managers
 	// may raise them. The server re-enforces this in validate_request.
 	if (!frappe.user_roles.includes("ITGC Access Manager")) {
-		hidden = hidden.concat(["Revoke Role", "Revoke Role Profile", "Disable User"]);
+		hidden = hidden.concat([
+			"Revoke Role",
+			"Revoke Role Profile",
+			"Disable User",
+			"Revoke User Permission",
+		]);
 	}
 
 	const options = (frm.fields_dict.request_type.df.options || "")

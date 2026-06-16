@@ -167,6 +167,13 @@ doc_events = {
 		"validate": "itgc.overrides.access_guard.block_doc",
 		"on_trash": "itgc.overrides.access_guard.block_doc",
 	},
+	# Value-level access is governed too: only the Manage Access apply flow (Request /
+	# Revoke User Permission, which sets frappe.flags.in_manage_access) may write User
+	# Permissions while governance is on. Direct frontend create/edit/delete is blocked.
+	"User Permission": {
+		"validate": "itgc.overrides.access_guard.block_doc",
+		"on_trash": "itgc.overrides.access_guard.block_doc",
+	},
 	# A custom doctype's standard DocPerm rows are editable from the DocType form
 	# (custom doctypes skip the developer-mode gate), bypassing the Custom DocPerm
 	# guard above. Block any permissions-table change made that way.
