@@ -4,8 +4,8 @@
 import frappe
 from frappe.tests.utils import FrappeTestCase
 
-PR1 = "https://github.com/solar-square/erp-next/pull/901"
-PR2 = "https://github.com/solar-square/erp-next/pull/902"
+PR1 = "https://github.com/org/my_app/pull/901"
+PR2 = "https://github.com/org/my_app/pull/902"
 
 
 class TestManageChange(FrappeTestCase):

@@ -43,7 +43,7 @@ approval state.
 | Name | Type | Where | How you get it |
 | --- | --- | --- | --- |
 | **Gate token** | shared secret | ITGC Settings **and** GitHub secret `ITGC_GATE_TOKEN` | You generate it (Step 1). |
-| `ITGC_BASE_URL` | repo **variable** | GitHub → Settings → Variables | Your Frappe site URL, e.g. `https://stagingerp.solarsquare.in` |
+| `ITGC_BASE_URL` | repo **variable** | GitHub → Settings → Variables | Your Frappe site URL, e.g. `https://stagingerp.example.com` |
 | `GITHUB_TOKEN` | auto | provided by Actions | Nothing to do — built in. |
 
 ### Step 1 — Generate the gate token
@@ -77,7 +77,7 @@ Repo → **Settings → Secrets and variables → Actions**.
 
 **Variables** tab → *New repository variable*
 - Name: `ITGC_BASE_URL`
-- Value: your Frappe site URL (no trailing path), e.g. `https://stagingerp.solarsquare.in`
+- Value: your Frappe site URL (no trailing path), e.g. `https://stagingerp.example.com`
 
 ![Repository variable ITGC_BASE_URL](.github/images/gh-variables.png)
 

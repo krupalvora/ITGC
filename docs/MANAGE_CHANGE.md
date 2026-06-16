@@ -169,7 +169,7 @@ In each gated repo: **Settings → Secrets and variables → Actions**.
 **Variables** tab → *New repository variable*
 - **Name:** `ITGC_BASE_URL` (or `ITGC_BASE_URL_PROD`, `ITGC_BASE_URL_STAGING`, …)
 - **Value:** your Frappe site URL, no trailing path — e.g.
-  `https://stagingerp.solarsquare.in`
+  `https://stagingerp.example.com`
 
 <!-- IMAGE: gh-variables.png
      GitHub Settings -> Secrets and variables -> Actions -> Variables tab, showing
@@ -273,30 +273,30 @@ token field. They must change together or the gate returns `401 unauthorized`.
 ## Worked example
 
 **Scenario:** *Aman* (Engineering) opens PR **#142** into the **`prod`** branch of
-the `solar_square` app. *Neha* is the Engineering HOD.
+the `my_app` app. *Neha* is the Engineering HOD.
 
 ### 1. Prerequisites (one-time)
 
 - A `prod` **Manage Change VC Branch** exists.
 - An `Engineering` **Manage Change Department** lists **Neha** as approver.
-- The two workflow files are committed in `solar_square`'s repo, and
+- The two workflow files are committed in `my_app`'s repo, and
   `ITGC_BASE_URL` / `ITGC_GATE_TOKEN` are set in GitHub. Branch protection requires
   the check on `prod`.
 
 ### 2. Aman raises the Manage Change
 
 > New → **Manage Change**
-> - **ERP App:** `solar_square`
+> - **ERP App:** `my_app`
 > - **Branch:** `prod`
 > - **Change Type:** `Feature`
 > - **Department:** `Engineering`
-> - **Ticket ID:** `SSE-1234`, **Description:** what's changing
+> - **Ticket ID:** `TICK-1234`, **Description:** what's changing
 > - **Save** → then **Submit** (workflow state **Pending**)
 
 On save, the **Approver** table auto-fills with **Neha**.
 
 <!-- IMAGE: mc-example-record.png
-     Screenshot of Aman's Manage Change: ERP App = solar_square, Branch = prod,
+     Screenshot of Aman's Manage Change: ERP App = my_app, Branch = prod,
      Change Type = Feature, Department = Engineering, Approver = Neha, state = Pending. -->
 ![Aman's Manage Change — Pending](images/mc-example-record.png)
 
@@ -304,7 +304,7 @@ On save, the **Approver** table auto-fills with **Neha**.
 
 Once the PR exists, Aman edits **Version Control URL** on the record (allowed even
 after submit) and pastes the PR URL, e.g.
-`https://github.com/org/solar_square/pull/142`. It's now **locked** to that PR.
+`https://github.com/org/my_app/pull/142`. It's now **locked** to that PR.
 
 <!-- IMAGE: mc-example-prurl.png
      Screenshot of the Version Control URL field on the record filled with the PR link. -->
