@@ -66,6 +66,7 @@
    "fieldname": "access_manager",
    "fieldtype": "Link",
    "label": "Access Manager",
+   "mandatory_depends_on": "eval:doc.enable_manage_access",
    "options": "User"
   },
   {
@@ -87,6 +88,7 @@
    "fieldname": "sudo_user",
    "fieldtype": "Link",
    "label": "Sudo User",
+   "mandatory_depends_on": "eval:doc.enable_manage_access",
    "options": "User"
   },
   {

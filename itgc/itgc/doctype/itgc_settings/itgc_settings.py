@@ -2,12 +2,55 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
 ACCESS_MANAGER_ROLE = "ITGC Access Manager"
 
 
 class ITGCSettings(Document):
+	def validate(self):
+		self.validate_sudo_user_for_manage_access()
+
+	def validate_sudo_user_for_manage_access(self):
+		"""Fail-secure: Manage Access cannot be ON without a valid, enabled Sudo User.
+
+		The Sudo User is the break-glass approver for protected-role grants
+		(`ManageAccess._protected_role_approvers`). Without a usable one, a
+		protected-role request can be raised but never approved — it stalls with no
+		eligible approver and the only recovery is the `bench console` break-glass.
+		Block that misconfiguration at save time rather than discovering it when a
+		grant is stuck. Enforced whenever the flag is on (not just on the enabling
+		transition) so the settings can never be saved in an inconsistent state.
+		"""
+		if not self.enable_manage_access:
+			return
+
+		if not self.sudo_user:
+			frappe.throw(
+				_(
+					"Set a Sudo User before enabling Manage Access. The Sudo User is the "
+					"break-glass approver for protected-role grants; without it such "
+					"requests can be raised but never approved."
+				),
+				title=_("Sudo User required"),
+			)
+
+		enabled = frappe.db.get_value("User", self.sudo_user, "enabled")
+		if enabled is None:
+			frappe.throw(
+				_("The Sudo User {0} does not exist.").format(frappe.bold(self.sudo_user)),
+				title=_("Sudo User required"),
+			)
+		if not enabled:
+			frappe.throw(
+				_(
+					"The Sudo User {0} is disabled. Choose an enabled user before enabling "
+					"Manage Access, or it will not be able to approve protected-role grants."
+				).format(frappe.bold(self.sudo_user)),
+				title=_("Sudo User required"),
+			)
+
 	def on_update(self):
 		self.sync_access_manager_role()
 		self.sync_sudo_user_role()
