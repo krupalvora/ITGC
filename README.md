@@ -133,16 +133,17 @@ Copy the output — you'll paste the **exact same value** into Steps 2 and 3.
 
 ### Step 2 — Set the token in Frappe
 
-1. Open **ITGC Settings** (Awesomebar → "ITGC Settings").
-2. Leave **"Allow Public Manage Change Status API (no token)"** *unticked*
-   (keeps the endpoint token-protected — the secure default).
-3. Paste the value into **"Manage Change Status API Token"** and **Save**.
+1. Open **ITGC Settings** (Awesomebar → "ITGC Settings") → **Manage Change** tab.
+2. Tick **Enable Change Management**.
+3. Paste the value into **"Manage Change Status API Token"** and **Save**. This
+   token is **mandatory** — the status endpoint is always token-protected
+   (fail-closed) and has **no public mode**.
 
-![ITGC Settings — Manage Change Approval API](.github/images/itgc-settings-overview.png)
+![ITGC Settings — Manage Change tab](.github/images/mc-settings.png)
 
-> Ticking *Allow Public…* removes the token requirement, but then anyone who can
-> reach the URL can read approval state. Only do that for a fully private
-> endpoint.
+> The endpoint requires a matching `X-ITGC-Token` header on every call. If no
+> token is configured, or the header is missing or wrong, the call is rejected
+> with `401` — approval state is never exposed without the token.
 
 ### Step 3 — Add the secret + variable in GitHub
 
