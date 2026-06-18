@@ -121,38 +121,55 @@ jobs:
           cat /tmp/mc_response.json || true
           echo
 
+          # Emit the endpoint's full `message` object as compact JSON for the comment
+          # step to parse (via env, not string interpolation) — that carries the
+          # richer governance fields and avoids breaking on quotes in user names.
+          RESPONSE=$(jq -c '.message // {}' /tmp/mc_response.json 2>/dev/null || echo '{}')
+
           {
             echo "approved=$APPROVED"
             echo "reason=$REASON"
-            echo "mc_name=$MC_NAME"
-            echo "mc_branch=$MC_BRANCH"
-            echo "workflow_state=$WORKFLOW_STATE"
             echo "http_code=$HTTP_CODE"
+            echo "response=$RESPONSE"
           } >> "$GITHUB_OUTPUT"
         continue-on-error: true
 
       # ── 2. Post a PR comment with the result ─────────────────────────────
       - name: Post PR comment
         uses: actions/github-script@v7
+        env:
+          # Pass values through env (not string interpolation) so names containing
+          # quotes can't break the script. RESPONSE_JSON is the endpoint's full
+          # `message` object.
+          APPROVED: ${{ steps.check.outputs.approved }}
+          HTTP_CODE: ${{ steps.check.outputs.http_code }}
+          RESPONSE_JSON: ${{ steps.check.outputs.response }}
         with:
           script: |
-            const approved = '${{ steps.check.outputs.approved }}' === 'true';
-            const reason = '${{ steps.check.outputs.reason }}';
-            const mcName = '${{ steps.check.outputs.mc_name }}';
-            const mcBranch = '${{ steps.check.outputs.mc_branch }}';
-            const workflowState = '${{ steps.check.outputs.workflow_state }}';
-            const httpCode = '${{ steps.check.outputs.http_code }}';
+            const approved = process.env.APPROVED === 'true';
+            const httpCode = process.env.HTTP_CODE || '';
+            let resp = {};
+            try { resp = JSON.parse(process.env.RESPONSE_JSON || '{}'); } catch (e) { resp = {}; }
+
+            const reason = resp.reason || 'unknown';
+            const mcName = resp.name || '';
+            const mcBranch = resp.mc_branch || '';
+            const workflowState = resp.workflow_state || '';
             const prUrl = context.payload.pull_request.html_url;
             const targetBranch = context.payload.pull_request.base.ref;
+
+            // "Full Name (email)" when both are known, else whichever we have.
+            const who = (name, id) => (name && id && name !== id) ? `${name} (${id})` : (name || id || '');
+            const fmt = (ts) => ts ? String(ts).replace('T', ' ').slice(0, 16) : '';
 
             const header = approved
               ? '## ✅ Manage Change Approved'
               : '## ❌ Manage Change Not Approved';
 
             const reasonHint = {
-              submitted: 'Matching Manage Change is submitted.',
-              not_submitted: 'Manage Change record exists but is not submitted (docstatus != 1).',
-              no_manage_change_record: 'No Manage Change record found for this PR URL + target branch combination.',
+              approved: 'A matching Manage Change has been approved in Frappe — merge is allowed.',
+              not_approved: 'A matching Manage Change exists but has not been approved yet. Get it approved (workflow → Approve).',
+              no_manage_change_record: 'No Manage Change is linked to this PR URL + target branch yet.',
               branch_mismatch: `A Manage Change for this PR exists but its Branch is \`${mcBranch}\`, not the PR's target branch \`${targetBranch}\`. They must match exactly.`,
               unknown_branch: `Target branch \`${targetBranch}\` is not a registered Manage Change VC Branch in the ERP this gate calls — the PR may be routed to the wrong environment, or the branch isn't set up there.`,
               missing_parameters: 'Workflow did not send the required parameters — check the action config.',
@@ -163,12 +180,30 @@ jobs:
             const lines = [];
             lines.push(header);
             lines.push('');
-            lines.push(`- **PR URL**: ${prUrl}`);
+            lines.push(`- **PR**: ${prUrl}`);
             lines.push(`- **Target branch**: \`${targetBranch}\``);
-            if (mcName) lines.push(`- **Manage Change**: \`${mcName}\`${workflowState ? ` (workflow state: ${workflowState})` : ''}`);
+            if (mcName) lines.push(`- **Manage Change**: \`${mcName}\`${workflowState ? ` — workflow state: **${workflowState}**` : ''}`);
             if (mcBranch) lines.push(`- **Manage Change branch**: \`${mcBranch}\``);
-            lines.push(`- **Reason**: \`${reason}\` — ${reasonHint}`);
-            lines.push(`- **HTTP**: \`${httpCode}\``);
+
+            // Governance context — only present on a matched record.
+            if (resp.change_type || resp.department) {
+              const ctx = [];
+              if (resp.change_type) ctx.push(`Change type: \`${resp.change_type}\``);
+              if (resp.department) ctx.push(`Department: \`${resp.department}\``);
+              if (resp.ticket) ctx.push(`Ticket: \`${resp.ticket}\``);
+              lines.push(`- ${ctx.join(' · ')}`);
+            }
+            const raisedBy = who(resp.raised_by_name, resp.raised_by);
+            if (raisedBy) lines.push(`- **Raised by**: ${raisedBy}${resp.raised_on ? ` on ${fmt(resp.raised_on)}` : ''}`);
+            if (approved) {
+              const approvedBy = who(resp.approved_by_name, resp.approved_by);
+              lines.push(`- **Approved by**: ${approvedBy || '_not recorded_'}${resp.approved_on ? ` on ${fmt(resp.approved_on)}` : ''}`);
+            }
+            if (Array.isArray(resp.approvers) && resp.approvers.length) {
+              lines.push(`- **Eligible approvers**: ${resp.approvers.join(', ')}`);
+            }
+
+            lines.push(`- **Endpoint**: \`${reason}\` (HTTP \`${httpCode}\`) — ${reasonHint}`);
             lines.push('');
             if (!approved) {
               if (reason === 'branch_mismatch') {

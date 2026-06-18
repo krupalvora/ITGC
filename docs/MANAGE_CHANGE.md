@@ -252,13 +252,20 @@ The endpoint returns one of these reasons — surfaced back on the PR:
 
 | Reason | Meaning | Fix |
 | --- | --- | --- |
-| `submitted` | ✅ Approved — merge allowed. | — |
+| `approved` | ✅ Approved — merge allowed. | — |
 | `unauthorized` | Token missing / mismatched, or none configured. | Re-check the token matches in ITGC Settings **and** the GitHub secret. |
 | `missing_parameters` | Workflow didn't send `pr_url` / `target_branch`. | Check the workflow config / `ITGC_BASE_URL`. |
 | `unknown_branch` | No **Manage Change VC Branch** matches the PR's base branch. | Register the branch (Step 1a), or the PR is pointed at the wrong environment's ERP. |
 | `branch_mismatch` | A Manage Change is bound to this PR URL but on a **different** branch. | Fix the record's Branch (or the VC Branch name) to match the git base ref exactly. |
 | `no_manage_change_record` | No submitted Manage Change for this PR URL + branch. | Set **Version Control URL** on the approved record to the PR URL. |
-| `not_submitted` | Record exists but isn't approved yet (`docstatus != 1`). | Get it approved. |
+| `not_approved` | Record exists but isn't approved yet (`docstatus != 1`). | Get it approved. |
+
+When a Manage Change **is** matched, the response also carries the governance
+context that the PR comment renders — **who raised it** (`raised_by` + `raised_on`),
+**who approved it** (`approved_by` + `approved_on`, resolved from the workflow
+action history), the **eligible approvers** (the department's HODs), and the
+`change_type` / `department` / `ticket`. The endpoint is token-protected, so this
+is only ever returned to your CI.
 
 > Need to re-run the check without a new commit? A maintainer comments
 > **`/recheck`** on the PR (handled by `manage-change-recheck.yml`).
@@ -310,7 +317,7 @@ after submit) and pastes the PR URL, e.g.
      Screenshot of the Version Control URL field on the record filled with the PR link. -->
 ![Version Control URL bound to the PR](images/mc-example-prurl.png)
 
-At this point the PR's check is still **red** — reason `not_submitted` if not yet
+At this point the PR's check is still **red** — reason `not_approved` if not yet
 approved (or `no_manage_change_record` until the URL is attached).
 
 ### 4. Neha approves
@@ -325,8 +332,8 @@ Neha opens the record and clicks **Approve**. State → **Approved**
 ### 5. The PR check goes green
 
 On the next check (push, or a `/recheck` comment) the gate finds the approved
-record for PR #142 on `prod` and returns `submitted`. The status check turns
-**green** and the PR can be merged.
+record for PR #142 on `prod` and returns `approved`. The status check turns
+**green** and the PR comment shows who raised and who approved the change.
 
 <!-- IMAGE: mc-pr-check-passing.png
      Screenshot of the GitHub PR with the "Check Manage Change is approved" status check
@@ -343,7 +350,7 @@ record for PR #142 on `prod` and returns `submitted`. The status check turns
 | Check is red with `unknown_branch` | No VC Branch named exactly like the PR's base branch — create one. |
 | Check is red with `branch_mismatch` | The record's Branch ≠ the PR's base branch — fix the Branch / VC Branch name. |
 | Check is red with `no_manage_change_record` | Attach the PR URL to the approved record's **Version Control URL**. |
-| Check is red with `not_submitted` | Get the record approved (workflow → Approve). |
+| Check is red with `not_approved` | Get the record approved (workflow → Approve). |
 | Can't **submit** a Manage Change | The target app repo is missing the workflow files — copy them in and merge (Step 3), then re-submit. |
 | Can't change Version Control URL | It's locked once a real URL is saved — raise a **new** Manage Change to gate a different PR. |
 | Approver can't approve | Confirm they're an HOD of the chosen Department (so they're in the record's **Approver** table). |

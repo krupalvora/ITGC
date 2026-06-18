@@ -67,18 +67,39 @@ class TestManageChangeGate(FrappeTestCase):
 		self.assertEqual(result["reason"], "unauthorized")
 		self.assertEqual(frappe.local.response.get("http_status_code"), 401)
 
-	def test_authorized_call_does_not_leak_requester_fields(self):
-		"""On a successful auth the response must not include approver/ticket data."""
+	def test_pre_match_response_is_minimal(self):
+		"""Before a record is matched there is no identity to return, so the
+		unknown-branch / no-record responses stay minimal (no governance fields)."""
 		_set_token(TOKEN)
 		_ensure_vc_branch("prod")
 		with patch.object(frappe, "get_request_header", return_value=TOKEN):
 			result = check_pr_approval(
 				pr_url="https://example.com/pr/does-not-exist", target_branch="prod"
 			)
-		# No matching Manage Change, but the point is the contract: no leak keys.
 		self.assertEqual(result["reason"], "no_manage_change_record")
-		self.assertNotIn("approver", result)
-		self.assertNotIn("ticket_id", result)
+		for key in ("raised_by", "approvers", "approved_by", "ticket"):
+			self.assertNotIn(key, result)
+
+	def test_matched_record_returns_governance_context(self):
+		"""A matched record carries who raised it (+ context) for the PR comment.
+
+		The endpoint is token-protected, so surfacing this to the gate is intended.
+		An unsubmitted record yields `not_approved` with the requester populated and
+		`approved_by` left None (nobody has approved it yet)."""
+		_set_token(TOKEN)
+		_ensure_vc_branch("staging")
+		pr = "https://example.com/pr/context"
+		mc = _new_mc(pr, "staging")  # docstatus 0 -> exists but not approved
+		with patch.object(frappe, "get_request_header", return_value=TOKEN):
+			result = check_pr_approval(pr_url=pr, target_branch="staging")
+		self.assertFalse(result["approved"])
+		self.assertEqual(result["reason"], "not_approved")
+		self.assertEqual(result["name"], mc.name)
+		self.assertEqual(result["raised_by"], mc.owner)
+		self.assertTrue(result["raised_by_name"])
+		self.assertIn("approvers", result)
+		self.assertIsInstance(result["approvers"], list)
+		self.assertIsNone(result["approved_by"])
 
 	def test_unknown_branch_is_flagged(self):
 		"""A target branch with no VC Branch record gets its own reason, not a

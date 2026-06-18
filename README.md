@@ -185,7 +185,7 @@ checks to pass before merging* → select **"Check Manage Change is approved"**.
 | --- | --- | --- |
 | `unauthorized` | Token missing/mismatched, or none configured. | Re-check Steps 2 & 3 match exactly. |
 | `no_manage_change_record` | No submitted Manage Change for this PR URL + branch. | Set `version_control_url` on the approved Manage Change to the PR URL. |
-| `not_submitted` | Record exists but isn't submitted (`docstatus != 1`). | Get it approved/submitted. |
+| `not_approved` | Record exists but isn't approved (`docstatus != 1`). | Get it approved. |
 | `missing_parameters` | Workflow didn't send `pr_url`/`target_branch`. | Check the workflow config / `ITGC_BASE_URL`. |
 
 A condensed copy of this guide also lives at

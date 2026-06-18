@@ -4,7 +4,43 @@
 import hmac
 
 import frappe
+from frappe.utils import get_fullname
 from frappe.utils.password import get_decrypted_password
+
+
+def _resolve_approver(mc_name):
+	"""Who actually approved `mc_name`, from the workflow action history.
+
+	Approval happens via the workflow "Approve" transition; Frappe records the
+	acting user on the corresponding Workflow Action (`completed_by`) and marks it
+	Completed. The latest completed action is therefore the approval, and its
+	`completed_by` is the approver — the same identity the on_submit notification
+	addresses. Returns (user_id, acted_on) or (None, None) when no completed action
+	is on record (e.g. history pruned, or approved before workflow actions existed).
+	"""
+	rows = frappe.get_all(
+		"Workflow Action",
+		filters={
+			"reference_doctype": "Manage Change",
+			"reference_name": mc_name,
+			"status": "Completed",
+			"completed_by": ["is", "set"],
+		},
+		fields=["completed_by", "modified"],
+		order_by="modified desc",
+		limit=1,
+		ignore_permissions=True,
+	)
+	if rows:
+		return rows[0].completed_by, rows[0].modified
+	return None, None
+
+
+def _named(user):
+	"""(user_id, full_name) for display, tolerating a missing/empty user."""
+	if not user:
+		return None, None
+	return user, (get_fullname(user) or user)
 
 
 def _is_authorized():
@@ -35,10 +71,12 @@ def check_pr_approval(pr_url=None, target_branch=None):
 	A PR is considered approved when a Manage Change record exists with
 	`version_control_url == pr_url`, `branch == target_branch`, and `docstatus == 1`.
 
-	The endpoint is `allow_guest` because CI calls it without a Frappe session,
-	but it is token-protected by default (see `_is_authorized`). The response is
-	intentionally minimal — only what the merge gate needs — to avoid leaking
-	requester/approver identities to anyone who can reach the URL.
+	The endpoint is `allow_guest` because CI calls it without a Frappe session, but
+	it is token-protected by default and fail-closed (see `_is_authorized`) — only a
+	caller holding the gate token can read it. On a *matched* record it therefore
+	returns the governance context the gated PR comment needs (who raised it, who
+	approved it, change type / department / ticket); the pre-match guard responses
+	(unknown branch / no record) stay minimal as they carry no record identity.
 	"""
 
 	try:
@@ -114,14 +152,41 @@ def check_pr_approval(pr_url=None, target_branch=None):
 
 		mc = rows[0]
 		approved = mc.docstatus == 1
+
+		# Load the matched record for the governance context shown on the PR.
+		mc_doc = frappe.get_doc("Manage Change", mc.name)
+		raised_by, raised_by_name = _named(mc_doc.owner)
+		approvers = [
+			get_fullname(row.user) or row.user
+			for row in (mc_doc.get("approver") or [])
+			if row.user
+		]
+
+		approved_by = approved_by_name = approved_on = None
+		if approved:
+			approver_user, acted_on = _resolve_approver(mc.name)
+			approved_by, approved_by_name = _named(approver_user)
+			approved_on = str(acted_on) if acted_on else None
+
 		return {
 			"approved": approved,
-			"reason": "submitted" if approved else "not_submitted",
+			"reason": "approved" if approved else "not_approved",
 			"name": mc.name,
 			"workflow_state": mc.get("workflow_state"),
 			"docstatus": mc.docstatus,
 			"pr_url": pr_url,
 			"target_branch": target_branch,
+			# Governance context (matched record only; endpoint is token-protected).
+			"change_type": mc_doc.change_type,
+			"department": mc_doc.department,
+			"ticket": mc_doc.ticket_id or mc_doc.ticket or None,
+			"raised_by": raised_by,
+			"raised_by_name": raised_by_name,
+			"raised_on": str(mc_doc.creation) if mc_doc.creation else None,
+			"approvers": approvers,
+			"approved_by": approved_by,
+			"approved_by_name": approved_by_name,
+			"approved_on": approved_on,
 		}
 	except Exception:
 		frappe.log_error(title="Manage Change Gate Error", message=frappe.get_traceback())
