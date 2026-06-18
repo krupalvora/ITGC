@@ -140,6 +140,10 @@ has_permission = {
 
 doc_events = {
 	"User": {
+		# Snapshot the user-submitted roles/profile BEFORE core's validate() runs
+		# populate_role_profile_roles() and rewrites the live roles table; the guard
+		# below compares against this snapshot, not the mutated table.
+		"before_validate": "itgc.overrides.access_guard.capture_user_access_state",
 		# block_user_role_change MUST stay first: it compares the submitted roles to
 		# the DB before the re-assert hooks below mutate the roles table.
 		"validate": [

@@ -205,6 +205,43 @@ class TestManageAccess(FrappeTestCase):
 		doc.save(ignore_permissions=True)  # owner == session user → allowed
 		self.assertEqual(doc.role, "Guest")
 
+	def test_non_owner_cannot_edit_user_permission_rows(self):
+		"""Maker-checker must also cover the `user_permissions` child table.
+
+		It is the substance of a User Permission request, so an approver editing the
+		rows then approving would grant access the requester never asked for. The
+		guard must reject the row change by a non-owner just like a scalar change.
+		"""
+		doc = self._new_request(
+			request_type="Request User Permission",
+			request_for="Administrator",
+			department=self.dept,
+		)
+		doc.append("user_permissions", self._up_row(for_value="Guest"))
+		doc.insert(ignore_permissions=True)  # owner == Administrator (the session user)
+
+		# A non-owner tampers with the requested permission value.
+		doc.user_permissions[0].for_value = "Administrator"
+		try:
+			frappe.set_user("Guest")
+			with self.assertRaises(frappe.PermissionError):
+				doc.save(ignore_permissions=True)
+		finally:
+			frappe.set_user("Administrator")
+
+	def test_owner_can_edit_own_user_permission_rows(self):
+		"""The requester may still edit their own User Permission rows."""
+		doc = self._new_request(
+			request_type="Request User Permission",
+			request_for="Administrator",
+			department=self.dept,
+		)
+		doc.append("user_permissions", self._up_row(for_value="Guest"))
+		doc.insert(ignore_permissions=True)
+		doc.user_permissions[0].for_value = "Administrator"
+		doc.save(ignore_permissions=True)  # owner == session user → allowed
+		self.assertEqual(doc.user_permissions[0].for_value, "Administrator")
+
 	# ----------------------------------------------------- user permissions
 	def _up_row(self, **kwargs):
 		row = {"allow": "User", "for_value": "Administrator", "apply_to_all_doctypes": 1}

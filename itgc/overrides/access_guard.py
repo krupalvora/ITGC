@@ -61,13 +61,32 @@ def block_doc(doc, method=None):
 		_throw(doc.doctype)
 
 
+def capture_user_access_state(doc, method=None):
+	"""Stash the user-SUBMITTED roles / role profile before core rewrites them.
+
+	Runs as the `User` `before_validate` hook -- i.e. BEFORE the controller's
+	`validate()` calls `populate_role_profile_roles()` (which empties the roles table
+	and refills it from the Role Profile) and before this app's re-assert hooks
+	(`ensure_*_role`) add the Access Manager / Manage-Access-granted roles back.
+
+	`block_user_role_change` compares *this* captured state -- exactly what the human
+	sent -- against the DB. By the time that validate hook runs the live roles table
+	no longer reflects the submission, so without this stash a role-profile user's
+	granted/asserted roles (which the form resubmits unchanged) would read as a
+	deletion and falsely block a plain password / API-key / profile-field edit.
+	"""
+	doc.flags._itgc_submitted_roles = {r.role for r in doc.get("roles")}
+	doc.flags._itgc_submitted_profile = doc.role_profile_name
+
+
 def block_user_role_change(doc, method=None):
 	"""Block direct changes to a User's roles / role profile.
 
-	Registered as the FIRST `User` validate hook so it sees the user-submitted state
-	before this app's re-assert hooks (`ensure_*_role`) mutate the roles table. We
-	compare against the committed DB state, so non-role User edits (language, theme,
-	password, bare user creation) are unaffected.
+	Compares the user-SUBMITTED roles/profile (captured in `capture_user_access_state`
+	on `before_validate`, before core's role-profile sync and this app's re-assert
+	hooks mutate the live roles table) against the committed DB state. So non-role
+	User edits (language, theme, password, API key, bare user creation) are
+	unaffected -- the resubmitted-but-unchanged roles match the DB and pass through.
 	"""
 	if not _managed():
 		return
@@ -89,9 +108,17 @@ def block_user_role_change(doc, method=None):
 			)
 		}
 	)
-	new_roles = {r.role for r in doc.get("roles")}
+	# Prefer the submitted snapshot; fall back to the live table only if the
+	# before_validate hook did not run (e.g. a direct unit-test call).
+	submitted_roles = doc.flags.get("_itgc_submitted_roles")
+	if submitted_roles is None:
+		submitted_roles = {r.role for r in doc.get("roles")}
+	if "_itgc_submitted_profile" in doc.flags:
+		submitted_profile = doc.flags.get("_itgc_submitted_profile")
+	else:
+		submitted_profile = doc.role_profile_name
 
-	if (doc.role_profile_name or None) != (old_profile or None) or new_roles != old_roles:
+	if (submitted_profile or None) != (old_profile or None) or submitted_roles != old_roles:
 		_throw(_("User roles / role profile"))
 
 

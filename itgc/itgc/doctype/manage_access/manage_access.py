@@ -50,6 +50,29 @@ REQUEST_CONTENT_FIELDS = (
 	"new_role_profile_name", "target_role_profile",
 )
 
+
+def _user_permission_signature(doc):
+	"""Order-independent signature of a request's User Permission rows.
+
+	`user_permissions` is the substance of the Request/Revoke User Permission
+	types but is not a scalar in REQUEST_CONTENT_FIELDS, so the maker-checker guard
+	compares it via this signature — otherwise an approver could alter the granted
+	/ revoked permissions before approving. `None` is normalised to "" so rows with
+	and without an Applicable For doctype stay sortable.
+	"""
+	return sorted(
+		(
+			r.allow or "",
+			r.for_value or "",
+			r.applicable_for or "",
+			int(r.apply_to_all_doctypes or 0),
+			int(r.is_default or 0),
+			int(r.hide_descendants or 0),
+		)
+		for r in (doc.user_permissions or [])
+	)
+
+
 class ManageAccess(Document):
 	def before_insert(self):
 		# Requester is always the creating user. This is the access system of
@@ -102,6 +125,8 @@ class ManageAccess(Document):
 		changed = [f for f in REQUEST_CONTENT_FIELDS if self.get(f) != before.get(f)]
 		if [r.role for r in (self.profile_roles or [])] != [r.role for r in (before.profile_roles or [])]:
 			changed.append("profile_roles")
+		if _user_permission_signature(self) != _user_permission_signature(before):
+			changed.append("user_permissions")
 		if changed:
 			frappe.throw(
 				_("Approvers cannot modify a request — only the requester may edit and resubmit it."),
