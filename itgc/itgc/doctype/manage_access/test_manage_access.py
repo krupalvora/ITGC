@@ -3,6 +3,7 @@
 
 import frappe
 from frappe.tests.utils import FrappeTestCase
+from frappe.utils import file_lock
 
 from itgc.itgc.doctype.manage_access.manage_access import (
 	get_effective_doc_perm,
@@ -11,6 +12,7 @@ from itgc.itgc.doctype.manage_access.manage_access import (
 
 TEST_ROLE = "System Manager"  # always present on a Frappe site; also a PROTECTED role
 ROUTING_ROLE = "ITGC Test Routing Role"  # a plain, non-protected role for routing tests
+ROUTING_ROLE_2 = "ITGC Test Routing Role 2"  # second plain role, for modify-profile tests
 DEFAULT_DEPT = "ITGC-Test-Default-Dept"  # `department` is mandatory on Manage Access
 
 
@@ -29,6 +31,7 @@ class TestManageAccess(FrappeTestCase):
 
 	def setUp(self):
 		_ensure_role(ROUTING_ROLE)
+		_ensure_role(ROUTING_ROLE_2)
 		self.dept = _make_department(DEFAULT_DEPT, ["Guest"])
 
 	def _new_request(self, **kwargs):
@@ -355,6 +358,96 @@ class TestManageAccess(FrappeTestCase):
 		rows = users_without_role_profile("User", email, "name", 0, 20, None)
 		self.assertNotIn(email, [r[0] for r in rows])
 
+	# ----------------------------------------------------- role-profile apply
+	def _modify_request(self, target_profile, roles):
+		req = self._new_request(
+			request_type="Modify Role Profile",
+			target_role_profile=target_profile,
+			department=self.dept,
+		)
+		for role in roles:
+			req.append("profile_roles", {"role": role})
+		req.insert(ignore_permissions=True)
+		return req
+
+	def _apply_and_cleanup_lock(self, req, signature, handler="apply_modify_role_profile"):
+		"""Run an apply handler exactly as on_submit does, then remove any lock file
+		left on disk (locks are not transactional, so the test rollback won't)."""
+		frappe.flags.in_manage_access = True
+		try:
+			getattr(req, handler)()
+		finally:
+			frappe.flags.in_manage_access = False
+			file_lock.delete_lock(signature)
+
+	def test_modify_role_profile_clears_stale_lock(self):
+		"""Regression: a stale queue_action lock must not permanently block approval.
+
+		Role Profile.on_update enqueues update_all_users() as an after-commit job and
+		locks the doc; the lock is released only by the background worker (after_job),
+		never within the approving request. If the worker never runs, the lock lingers
+		and every later approval dies at check_if_locked() -> DocumentLockedError —
+		exactly the staging failure. apply_modify_role_profile must clear it.
+		"""
+		rp = _make_role_profile("ITGC-Test-RP-Lock", [ROUTING_ROLE])
+		# Simulate the orphaned lock left by a prior approval whose worker never ran.
+		file_lock.create_lock(rp.get_signature())
+		self.assertTrue(rp.is_locked)
+
+		req = self._modify_request(rp.name, [ROUTING_ROLE, ROUTING_ROLE_2])
+		# Must NOT raise DocumentLockedError.
+		self._apply_and_cleanup_lock(req, rp.get_signature())
+
+		roles = {r.role for r in frappe.get_doc("Role Profile", rp.name).roles}
+		self.assertEqual(roles, {ROUTING_ROLE, ROUTING_ROLE_2})
+
+	def test_modify_role_profile_leaves_profile_unlocked(self):
+		"""After apply the profile must be left UNLOCKED so the next approval (whose
+		worker may also never run) is not blocked — the lock must never wedge."""
+		rp = _make_role_profile("ITGC-Test-RP-Unlock", [ROUTING_ROLE])
+		req = self._modify_request(rp.name, [ROUTING_ROLE_2])
+		self._apply_and_cleanup_lock(req, rp.get_signature())
+		self.assertFalse(frappe.get_doc("Role Profile", rp.name).is_locked)
+
+	def test_modify_role_profile_propagates_to_assigned_users_synchronously(self):
+		"""An Approved Modify Role Profile must take effect on assigned users inline,
+		without depending on the after-commit background worker."""
+		rp = _make_role_profile("ITGC-Test-RP-Sync", [ROUTING_ROLE])
+		email = _ensure_user("itgc-rp-sync-user@example.com")
+		# Assign the profile and materialise its current role on the user, so
+		# core's update_all_users() (an inner join on Has Role) sees the user.
+		user = frappe.get_doc("User", email)
+		user.role_profile_name = rp.name
+		user.flags.ignore_permissions = True
+		user.save(ignore_permissions=True)
+		self.assertIn(ROUTING_ROLE, _db_user_roles(email))
+
+		req = self._modify_request(rp.name, [ROUTING_ROLE, ROUTING_ROLE_2])
+		self._apply_and_cleanup_lock(req, rp.get_signature())
+
+		# The new profile role reached the user synchronously (no worker run).
+		self.assertIn(ROUTING_ROLE_2, _db_user_roles(email))
+
+	def test_create_role_profile_creates_and_leaves_unlocked(self):
+		"""apply_create_role_profile must mint the profile and not leave it locked."""
+		name = "ITGC-Test-RP-Create"
+		if frappe.db.exists("Role Profile", name):
+			frappe.delete_doc("Role Profile", name, force=True, ignore_permissions=True)
+
+		req = self._new_request(
+			request_type="Create Role Profile",
+			new_role_profile_name=name,
+			department=self.dept,
+		)
+		req.append("profile_roles", {"role": ROUTING_ROLE})
+		req.insert(ignore_permissions=True)
+
+		signature = frappe.get_doc({"doctype": "Role Profile", "name": name}).get_signature()
+		self._apply_and_cleanup_lock(req, signature, handler="apply_create_role_profile")
+
+		self.assertTrue(frappe.db.exists("Role Profile", name))
+		self.assertFalse(frappe.get_doc("Role Profile", name).is_locked)
+
 
 def _ensure_role(role_name):
 	if not frappe.db.exists("Role", role_name):
@@ -394,6 +487,35 @@ def _ensure_role_profile(name):
 	rp.append("roles", {"role": ROUTING_ROLE})
 	rp.insert(ignore_permissions=True)
 	return rp.name
+
+
+def _make_role_profile(name, roles):
+	"""Create (replacing any existing) a Role Profile with exactly `roles`, left
+	unlocked so a test starts from a clean lock state."""
+	if frappe.db.exists("Role Profile", name):
+		frappe.delete_doc("Role Profile", name, force=True, ignore_permissions=True)
+	rp = frappe.new_doc("Role Profile")
+	rp.role_profile = name
+	for role in roles:
+		rp.append("roles", {"role": role})
+	rp.flags.ignore_permissions = True
+	rp.insert(ignore_permissions=True)
+	# insert() -> on_update -> queue_action also locks the doc; clear it so the test
+	# observes only the lock state produced by the code under test.
+	if rp.is_locked:
+		rp.unlock()
+	return rp
+
+
+def _db_user_roles(user):
+	return {
+		r.role
+		for r in frappe.get_all(
+			"Has Role",
+			filters={"parent": user, "parenttype": "User"},
+			fields=["role"],
+		)
+	}
 
 
 def _make_department(name, users):

@@ -528,10 +528,17 @@ class ManageAccess(Document):
 			rp.append("roles", {"role": r.role})
 		rp.flags.ignore_permissions = True
 		rp.insert()
+		# insert() -> on_update -> queue_action("update_all_users") leaves a document
+		# lock that is only released by the background execute_action worker (see the
+		# note in apply_modify_role_profile). A brand-new profile has no assigned users,
+		# so the sync is a no-op, but the lock would otherwise sit on disk for up to
+		# DOCUMENT_LOCK_EXPIRTY (12h) and block an immediate Modify of the same profile.
+		# Release it now so nothing stays wedged regardless of worker health.
+		if rp.is_locked:
+			rp.unlock()
 
 	def apply_modify_role_profile(self):
-		# Replace the profile's roles with the table; saving fires core's on_update ->
-		# update_all_users(), which re-syncs roles onto every user assigned this profile.
+		# Replace the profile's roles with the table.
 		rp = frappe.get_doc("Role Profile", self.target_role_profile)
 		rp.set("roles", [])
 		for r in self.profile_roles:
@@ -539,14 +546,26 @@ class ManageAccess(Document):
 		rp.flags.ignore_permissions = True
 		# Role Profile.on_update -> queue_action("update_all_users") creates a *file*
 		# lock (non-transactional) and only releases it from the background
-		# execute_action worker. If a prior approval never committed, or the worker
-		# never ran / died before unlocking, that lock lingers on disk and every
-		# later re-approval fails at check_if_locked() with DocumentLockedError before
-		# on_update even runs. Clear any stale lock so re-approval isn't permanently
-		# blocked (a genuinely in-flight lock auto-expires via DOCUMENT_LOCK_EXPIRTY).
+		# execute_action worker (release_document_locks runs in after_job, never in
+		# after_request). If a prior approval's worker never ran / died before
+		# unlocking, that lock lingers on disk and every later re-approval fails at
+		# check_if_locked() with DocumentLockedError before on_update even runs. Clear
+		# any stale lock first so re-approval is never permanently blocked.
 		if rp.is_locked:
 			rp.unlock()
 		rp.save()
+		# Core propagates the new roles to assigned users ONLY via update_all_users(),
+		# which on_update enqueues as an after-commit background job. In this
+		# governance flow an Approved request must deterministically take effect even
+		# if the RQ worker is down/backlogged, so we run the sync inline. It is
+		# idempotent — the queued job, if it later runs, simply re-applies the same end
+		# state. We then release the lock that queue_action just created (synchronously,
+		# during save) so a never-running worker can't leave the profile wedged for the
+		# next approval. Runs under frappe.flags.in_manage_access (set in on_submit),
+		# so the per-user saves are not blocked by the access-master guard.
+		rp.update_all_users()
+		if rp.is_locked:
+			rp.unlock()
 
 	def apply_request_user_permission(self):
 		"""Create the requested User Permission records for the subject user.
