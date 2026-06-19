@@ -66,7 +66,7 @@ The result: nothing reaches `staging`/`prod` without a recorded, approved change
 | --- | --- |
 | **ERP App** | Dropdown of apps actually installed on this site. |
 | **Branch** | Link to a Manage Change VC Branch (the gated branch). |
-| **Version Control URL** | The PR URL. Defaults to `Not Set`; **fillable after submit** (so you can attach the PR once it's raised). Once a real URL is saved it is **locked** (immutable) and **unique** — one PR maps to exactly one Manage Change. To gate a different PR, raise a new record. |
+| **Version Control URL** | The PR URL. Defaults to `Not Set`; **must be set before the change is approved** — an approval is bound to that specific PR, so you can't approve an unbound record and attach a PR afterwards. Once a real URL is saved it is **locked** (immutable) and **unique** — one PR maps to exactly one Manage Change. To gate a different PR, raise a new record. |
 | **Change Type / Department / Ticket / Ticket ID / Description** | Metadata. If **Ticket ID** is set it becomes the record name; otherwise it's `MC-YYYY-MM-DD-##`. |
 | **Approver** | Read-only, synced from the department's HODs. |
 
@@ -309,9 +309,9 @@ On save, the **Approver** table auto-fills with **Neha**.
 
 ### 3. Aman opens PR #142 and attaches it
 
-Once the PR exists, Aman edits **Version Control URL** on the record (allowed even
-after submit) and pastes the PR URL, e.g.
-`https://github.com/org/my_app/pull/142`. It's now **locked** to that PR.
+Once the PR exists, Aman edits **Version Control URL** on the record and pastes the
+PR URL, e.g. `https://github.com/org/my_app/pull/142`. It's now **locked** to that
+PR. This must be done **before** approval — an unbound record cannot be approved.
 
 <!-- IMAGE: mc-example-prurl.png
      Screenshot of the Version Control URL field on the record filled with the PR link. -->

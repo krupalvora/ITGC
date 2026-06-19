@@ -119,6 +119,23 @@ class ManageChange(Document):
 
 	def before_submit(self):
 		self._enforce_workflow_files_present()
+		self._require_bound_version_control_url()
+
+	def _require_bound_version_control_url(self):
+		# An approval must reference a specific PR. version_control_url is
+		# allow_on_submit and defaults to "Not Set", so without this guard an MC
+		# could be approved while unbound and then pointed at ANY PR afterwards —
+		# the approver would have signed off on nothing. Require a real URL before
+		# the workflow "Approve" transition submits the doc; combined with the
+		# freeze in _lock_version_control_url this binds approval ↔ PR for good.
+		if not _is_real_version_control_url(self.version_control_url):
+			frappe.throw(
+				_(
+					"Set the Version Control URL to the PR before approving. "
+					"An approval must reference a specific pull request."
+				),
+				title=_("Version Control URL Required"),
+			)
 
 	def after_insert(self):
 		# A freshly raised change sits in the workflow's first state (Pending) and

@@ -40,7 +40,7 @@
   {
    "allow_on_submit": 1,
    "default": "Not Set",
-   "description": "PR which needs to be merged with default branch. Can be filled after the Manage Change is submitted (e.g., after raising the PR).",
+   "description": "PR which needs to be merged with default branch. Must be set before the change is approved — an approval is bound to this specific PR and the URL is locked once set.",
    "fieldname": "version_control_url",
    "fieldtype": "Data",
    "in_list_view": 1,

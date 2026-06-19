@@ -87,6 +87,20 @@ class TestManageChange(FrappeTestCase):
 		with self.assertRaises(frappe.ValidationError):
 			doc.save(ignore_permissions=True)
 
+	def test_submit_requires_bound_url(self):
+		"""An MC can't be approved (submitted) while unbound.
+
+		before_submit must reject a "Not Set" / blank version_control_url so an
+		approval always references a specific PR; a real URL passes the guard.
+		Tested via the guard directly to avoid the unrelated workflow-file check.
+		"""
+		doc = self._new_mc()  # default "Not Set"
+		with self.assertRaises(frappe.ValidationError):
+			doc._require_bound_version_control_url()
+
+		doc.version_control_url = PR1
+		doc._require_bound_version_control_url()  # should not raise
+
 	def test_cancelled_record_does_not_block_reuse(self):
 		"""A cancelled (docstatus 2) MC's URL is freed for a new binding."""
 		# Simulate a cancelled record holding PR1, then bind a fresh MC to PR1.
