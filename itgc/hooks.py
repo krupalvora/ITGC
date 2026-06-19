@@ -140,6 +140,10 @@ has_permission = {
 
 doc_events = {
 	"User": {
+		# Block public self sign-up from non-allow-listed email domains (creation only;
+		# gates the Guest-context sign_up / social-login path, not admin or governed
+		# New-User creation).
+		"before_insert": "itgc.overrides.user.restrict_signup_domain",
 		# Snapshot the user-submitted roles/profile BEFORE core's validate() runs
 		# populate_role_profile_roles() and rewrites the live roles table; the guard
 		# below compares against this snapshot, not the mutated table.

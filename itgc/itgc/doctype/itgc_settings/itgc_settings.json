@@ -13,6 +13,9 @@
   "sudo_user",
   "restricted_roles",
   "approval_gated_roles",
+  "self_signup_section",
+  "restrict_signup_to_domains",
+  "signup_allowed_domains",
   "manage_change_tab",
   "manage_change_api_section",
   "enable_change_management",
@@ -106,6 +109,26 @@
    "fieldtype": "Table",
    "label": "Approval-Gated Roles",
    "options": "Has Role"
+  },
+  {
+   "fieldname": "self_signup_section",
+   "fieldtype": "Section Break",
+   "label": "Self Sign-Up Domain Restriction"
+  },
+  {
+   "default": "0",
+   "description": "When ON, public self sign-up is allowed ONLY for the email domains listed below. Admin-created users and the governed Manage Access 'New User' flow are unaffected. Fail-secure: if this is ON with no domains listed, every self sign-up is blocked.",
+   "fieldname": "restrict_signup_to_domains",
+   "fieldtype": "Check",
+   "label": "Restrict Self Sign-Up to Allowed Domains"
+  },
+  {
+   "depends_on": "eval:doc.restrict_signup_to_domains",
+   "description": "Allowed email domains for self sign-up — one per row, without the @ (e.g. solarsquare.in). Sub-domains must be listed explicitly.",
+   "fieldname": "signup_allowed_domains",
+   "fieldtype": "Table",
+   "label": "Allowed Sign-Up Domains",
+   "options": "ITGC Signup Domain"
   },
   {
    "default": "0",

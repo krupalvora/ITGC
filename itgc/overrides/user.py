@@ -2,8 +2,48 @@
 # For license information, please see license.txt
 
 import frappe
+from frappe import _
 
 ACCESS_MANAGER_ROLE = "ITGC Access Manager"
+
+
+def restrict_signup_domain(doc, method=None):
+	"""Restrict PUBLIC self sign-up to the email domains allow-listed in ITGC Settings.
+
+	Wired as the `User` `before_insert` doc-event. It gates ONLY self-service
+	signups — users created while logged out (`frappe.session.user == "Guest"`, e.g.
+	frappe.core ... user.sign_up or a social-login callback). Admin-created users and
+	the governed Manage Access "New User" flow run as a logged-in, authorised user and
+	are intentionally exempt: those paths are already controlled and audited.
+
+	Fail-secure: when the control is ON but no domains are configured, every self
+	sign-up is blocked rather than silently allowed — an enabled control must never
+	be a no-op.
+	"""
+	# Only gate genuine self-service signups: account creation while logged out.
+	if frappe.session.user != "Guest":
+		return
+	if not frappe.db.get_single_value("ITGC Settings", "restrict_signup_to_domains"):
+		return
+
+	allowed = {
+		(d or "").strip().lower().lstrip("@")
+		for d in frappe.get_all(
+			"ITGC Signup Domain",
+			filters={"parenttype": "ITGC Settings", "parentfield": "signup_allowed_domains"},
+			pluck="domain",
+		)
+	}
+	allowed.discard("")
+
+	email = (doc.email or doc.name or "").strip().lower()
+	domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+
+	if not allowed or domain not in allowed:
+		frappe.throw(
+			_("Sign-up is restricted to approved email domains. Please use your organisation email address."),
+			title=_("Sign-up Not Allowed"),
+		)
 
 
 def ensure_access_manager_role(doc, method=None):

@@ -286,6 +286,32 @@ the record is read-only (audit trail).
 
 ---
 
+## Self sign-up domain restriction
+
+An independent control (separate from the **Enable Manage Access** lockdown) that
+restricts **public self sign-up** to an allow-list of email domains.
+
+- **ITGC Settings → Manage Access tab → Self Sign-Up Domain Restriction**
+  - **Restrict Self Sign-Up to Allowed Domains** (check) — turns the control on.
+  - **Allowed Sign-Up Domains** (table) — one domain per row, **without** the `@`
+    (e.g. `solarsquare.in`). Sub-domains (e.g. `mail.solarsquare.in`) must be listed
+    explicitly; matching is exact and case-insensitive.
+
+**Scope — only public self sign-up.** The control gates account creation done while
+logged out (the `Guest`-context `sign_up` / social-login path). Admin-created users
+and the governed Manage Access **New User** flow run as a logged-in, authorised user
+and are **never** gated — those paths are already controlled and audited.
+
+**Fail-secure.** If the control is ON but the domain list is empty, **every** self
+sign-up is blocked (an enabled control is never a silent no-op).
+
+> Audit note: this is a *compensating* hardening, not the primary access control.
+> The audit-grade control for provisioning remains authorized creation via the
+> **New User** request (maker-checker). Use a corporate domain only — listing a
+> public provider (e.g. `gmail.com`) defeats the purpose.
+
+---
+
 ## Break-glass & troubleshooting
 
 | Situation | What to do |
