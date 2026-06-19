@@ -537,6 +537,15 @@ class ManageAccess(Document):
 		for r in self.profile_roles:
 			rp.append("roles", {"role": r.role})
 		rp.flags.ignore_permissions = True
+		# Role Profile.on_update -> queue_action("update_all_users") creates a *file*
+		# lock (non-transactional) and only releases it from the background
+		# execute_action worker. If a prior approval never committed, or the worker
+		# never ran / died before unlocking, that lock lingers on disk and every
+		# later re-approval fails at check_if_locked() with DocumentLockedError before
+		# on_update even runs. Clear any stale lock so re-approval isn't permanently
+		# blocked (a genuinely in-flight lock auto-expires via DOCUMENT_LOCK_EXPIRTY).
+		if rp.is_locked:
+			rp.unlock()
 		rp.save()
 
 	def apply_request_user_permission(self):
