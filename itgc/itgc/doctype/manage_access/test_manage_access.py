@@ -6,7 +6,9 @@ from frappe.tests.utils import FrappeTestCase
 from frappe.utils import file_lock
 
 from itgc.itgc.doctype.manage_access.manage_access import (
+	_role_profile_roles,
 	get_effective_doc_perm,
+	get_protected_roles,
 	users_without_role_profile,
 )
 
@@ -14,6 +16,8 @@ TEST_ROLE = "System Manager"  # always present on a Frappe site; also a PROTECTE
 ROUTING_ROLE = "ITGC Test Routing Role"  # a plain, non-protected role for routing tests
 ROUTING_ROLE_2 = "ITGC Test Routing Role 2"  # second plain role, for modify-profile tests
 DEFAULT_DEPT = "ITGC-Test-Default-Dept"  # `department` is mandatory on Manage Access
+MA_WORKFLOW = "ITGC Manage Access Approval"  # deactivated in the end-to-end txn tests
+SSE_PROFILE = "SSE-Tech"  # the real System-User role profile used for the system-user cases
 
 
 class TestManageAccess(FrappeTestCase):
@@ -428,6 +432,53 @@ class TestManageAccess(FrappeTestCase):
 		# The new profile role reached the user synchronously (no worker run).
 		self.assertIn(ROUTING_ROLE_2, _db_user_roles(email))
 
+	# ----------------------------------------------------- revoke vs profile role
+	def test_revoke_role_supplied_by_profile_is_blocked(self):
+		"""A per-user Revoke Role for a role the user gets from their Role Profile must
+		be refused — core re-applies profile roles on save, so it would silently no-op
+		(the production bug: saiyyam kept IT-Support after an approved revoke)."""
+		rp = _make_role_profile("ITGC-Test-RP-Revoke", [ROUTING_ROLE])
+		email = _ensure_user("itgc-revoke-profile-user@example.com")
+		frappe.db.set_value("User", email, "role_profile_name", rp.name)
+
+		req = self._new_request(
+			request_type="Revoke Role",
+			request_for=email,
+			role=ROUTING_ROLE,  # supplied by the profile
+			department=self.dept,
+		)
+		with self.assertRaises(frappe.ValidationError):
+			req.insert(ignore_permissions=True)
+
+	def test_revoke_role_not_in_profile_is_allowed(self):
+		"""Revoking an ad-hoc role the user does NOT get from their profile is fine."""
+		rp = _make_role_profile("ITGC-Test-RP-Revoke-OK", [ROUTING_ROLE])
+		email = _ensure_user("itgc-revoke-adhoc-user@example.com")
+		frappe.db.set_value("User", email, "role_profile_name", rp.name)
+
+		req = self._new_request(
+			request_type="Revoke Role",
+			request_for=email,
+			role=ROUTING_ROLE_2,  # NOT in the profile
+			department=self.dept,
+		)
+		req.insert(ignore_permissions=True)  # must not raise
+		self.assertEqual(req.role, ROUTING_ROLE_2)
+
+	def test_revoke_role_for_user_without_profile_is_allowed(self):
+		"""No Role Profile at all → ordinary ad-hoc revoke, always allowed."""
+		email = _ensure_user("itgc-revoke-noprofile-user@example.com")
+		frappe.db.set_value("User", email, "role_profile_name", None)
+
+		req = self._new_request(
+			request_type="Revoke Role",
+			request_for=email,
+			role=ROUTING_ROLE,
+			department=self.dept,
+		)
+		req.insert(ignore_permissions=True)  # must not raise
+		self.assertEqual(req.role, ROUTING_ROLE)
+
 	def test_create_role_profile_creates_and_leaves_unlocked(self):
 		"""apply_create_role_profile must mint the profile and not leave it locked."""
 		name = "ITGC-Test-RP-Create"
@@ -447,6 +498,203 @@ class TestManageAccess(FrappeTestCase):
 
 		self.assertTrue(frappe.db.exists("Role Profile", name))
 		self.assertFalse(frappe.get_doc("Role Profile", name).is_locked)
+
+
+class TestManageAccessTransactions(FrappeTestCase):
+	"""End-to-end coverage of every subject-acting transaction across 4 user kinds.
+
+	Each transaction is applied through a real submit() (which runs on_submit ->
+	apply with frappe.flags.in_manage_access set, exactly like an approval), then the
+	user's ACTUAL state — materialised roles (Has Role), role_profile_name, enabled,
+	and User Permission rows — is asserted, i.e. we check the change really happened.
+
+	The four categories (per the request):
+	  1. Normal (Website) user, newly created
+	  2. Normal (Website) user, existing
+	  3. System user, newly created, assigned the SSE-Tech Role Profile
+	  4. System user, existing, already on the SSE-Tech Role Profile
+
+	The approval Workflow is deactivated for the duration so submit() drives apply()
+	directly without needing a live approver/transition; everything is rolled back by
+	FrappeTestCase. The access-master guards are inert in tests (no HTTP request).
+	"""
+
+	def setUp(self):
+		_ensure_role(ROUTING_ROLE)
+		_ensure_role(ROUTING_ROLE_2)
+		self.dept = _make_department("ITGC-Txn-Dept", ["Administrator"])
+		# Deactivate the approval workflow so submit() runs on_submit directly.
+		if frappe.db.exists("Workflow", MA_WORKFLOW):
+			frappe.db.set_value("Workflow", MA_WORKFLOW, "is_active", 0)
+			frappe.clear_cache()
+		self.sse_role = self._a_safe_profile_role()
+
+	def tearDown(self):
+		frappe.set_user("Administrator")
+
+	# --------------------------------------------------------------- helpers
+	def _a_safe_profile_role(self):
+		"""A real, non-protected role from the SSE-Tech profile (for the revoke tests),
+		or None if the profile is absent on this site."""
+		if not frappe.db.exists("Role Profile", SSE_PROFILE):
+			return None
+		protected = get_protected_roles()
+		for role in sorted(_role_profile_roles(SSE_PROFILE)):
+			if role not in protected and frappe.db.exists("Role", role):
+				return role
+		return None
+
+	def _new(self, **kwargs):
+		req = frappe.new_doc("Manage Access")
+		req.update(kwargs)
+		return req
+
+	def _submit(self, req):
+		"""Insert + submit a request, running the real apply() via on_submit."""
+		req.flags.ignore_permissions = True
+		req.insert(ignore_permissions=True)
+		req.submit()
+		return req
+
+	def _up_request(self, email, allow, for_value, revoke=False):
+		req = self._new(
+			request_type="Revoke User Permission" if revoke else "Request User Permission",
+			request_for=email,
+			department=self.dept,
+		)
+		req.append(
+			"user_permissions", {"allow": allow, "for_value": for_value, "apply_to_all_doctypes": 1}
+		)
+		return req
+
+	def _up_exists(self, email, allow, for_value):
+		return bool(
+			frappe.db.exists("User Permission", {"user": email, "allow": allow, "for_value": for_value})
+		)
+
+	def _assign_profile(self, email, profile):
+		"""Put a user on a Role Profile as an 'existing' starting state (materialises
+		the profile's roles into Has Role via core's populate_role_profile_roles)."""
+		user = frappe.get_doc("User", email)
+		user.role_profile_name = profile
+		user.flags.ignore_permissions = True
+		user.save(ignore_permissions=True)
+
+	def _fresh_user(self, email, user_type):
+		email = _ensure_user(email, user_type=user_type)
+		frappe.db.set_value("User", email, {"role_profile_name": None, "enabled": 1})
+		frappe.db.delete("Has Role", {"parent": email, "parenttype": "User"})
+		return email
+
+	# --------------------------------------------------------------- 1) normal, new
+	def test_cat1_normal_new_user(self):
+		email = self._fresh_user("itgc-txn-normal-new@example.com", "Website User")
+
+		# New User → assign a role
+		self._submit(self._new(request_type="New User", request_for=email, role=ROUTING_ROLE, department=self.dept))
+		self.assertIn(ROUTING_ROLE, _db_user_roles(email))
+
+		# Request Role → add a second ad-hoc role
+		self._submit(self._new(request_type="Request Role", request_for=email, role=ROUTING_ROLE_2, department=self.dept))
+		self.assertIn(ROUTING_ROLE_2, _db_user_roles(email))
+
+		# Request User Permission → row created
+		self._submit(self._up_request(email, "User", "Administrator"))
+		self.assertTrue(self._up_exists(email, "User", "Administrator"))
+
+		# Revoke User Permission → row removed
+		self._submit(self._up_request(email, "User", "Administrator", revoke=True))
+		self.assertFalse(self._up_exists(email, "User", "Administrator"))
+
+		# Revoke Role → ad-hoc role removed
+		self._submit(self._new(request_type="Revoke Role", request_for=email, role=ROUTING_ROLE_2, department=self.dept))
+		self.assertNotIn(ROUTING_ROLE_2, _db_user_roles(email))
+
+		# Disable User → user disabled
+		self._submit(self._new(request_type="Disable User", request_for=email, department=self.dept))
+		self.assertEqual(frappe.db.get_value("User", email, "enabled"), 0)
+
+	# --------------------------------------------------------------- 2) normal, existing
+	def test_cat2_normal_existing_user(self):
+		email = self._fresh_user("itgc-txn-normal-existing@example.com", "Website User")
+
+		# Request Role (ad-hoc) → present
+		self._submit(self._new(request_type="Request Role", request_for=email, role=ROUTING_ROLE, department=self.dept))
+		self.assertIn(ROUTING_ROLE, _db_user_roles(email))
+
+		# Request Role Profile → profile set, its role materialised, ad-hoc role retained
+		rp = _make_role_profile("ITGC-Txn-Profile", [ROUTING_ROLE_2])
+		self._submit(self._new(request_type="Request Role Profile", request_for=email, role_profile=rp.name, department=self.dept))
+		self.assertEqual(frappe.db.get_value("User", email, "role_profile_name"), rp.name)
+		self.assertIn(ROUTING_ROLE_2, _db_user_roles(email))
+		self.assertIn(ROUTING_ROLE, _db_user_roles(email))  # ad-hoc grant re-asserted
+
+		# Revoke Role Profile → link cleared AND the profile's role removed (the fix);
+		# the independently-granted ad-hoc role survives.
+		self._submit(self._new(request_type="Revoke Role Profile", request_for=email, role_profile=rp.name, department=self.dept))
+		self.assertFalse(frappe.db.get_value("User", email, "role_profile_name"))
+		self.assertNotIn(ROUTING_ROLE_2, _db_user_roles(email))
+		self.assertIn(ROUTING_ROLE, _db_user_roles(email))
+
+		# Disable User
+		self._submit(self._new(request_type="Disable User", request_for=email, department=self.dept))
+		self.assertEqual(frappe.db.get_value("User", email, "enabled"), 0)
+
+	# --------------------------------------------------------------- 3) system, new + SSE-Tech
+	def test_cat3_system_new_user_sse_tech_profile(self):
+		if not self.sse_role:
+			self.skipTest(f"{SSE_PROFILE} profile/role not available on this site")
+		email = self._fresh_user("itgc-txn-sys-new@example.com", "System User")
+
+		# New User assigning the SSE-Tech Role Profile → profile set, its roles materialised
+		self._submit(self._new(request_type="New User", request_for=email, role_profile=SSE_PROFILE, department=self.dept))
+		self.assertEqual(frappe.db.get_value("User", email, "role_profile_name"), SSE_PROFILE)
+		self.assertIn(self.sse_role, _db_user_roles(email))
+
+		# Revoke Role of a PROFILE-supplied role → refused (would silently no-op).
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._new(request_type="Revoke Role", request_for=email, role=self.sse_role, department=self.dept))
+
+		# Revoke Role Profile → link cleared AND profile roles removed.
+		self._submit(self._new(request_type="Revoke Role Profile", request_for=email, role_profile=SSE_PROFILE, department=self.dept))
+		self.assertFalse(frappe.db.get_value("User", email, "role_profile_name"))
+		self.assertNotIn(self.sse_role, _db_user_roles(email))
+
+		# Disable User
+		self._submit(self._new(request_type="Disable User", request_for=email, department=self.dept))
+		self.assertEqual(frappe.db.get_value("User", email, "enabled"), 0)
+
+	# --------------------------------------------------------------- 4) system, existing on SSE-Tech
+	def test_cat4_system_existing_user_with_sse_tech(self):
+		if not self.sse_role:
+			self.skipTest(f"{SSE_PROFILE} profile/role not available on this site")
+		email = self._fresh_user("itgc-txn-sys-existing@example.com", "System User")
+		self._assign_profile(email, SSE_PROFILE)  # existing: already on SSE-Tech
+		self.assertIn(self.sse_role, _db_user_roles(email))
+
+		# Request Role (ad-hoc extra) → persists despite profile sync (re-asserted)
+		self._submit(self._new(request_type="Request Role", request_for=email, role=ROUTING_ROLE_2, department=self.dept))
+		self.assertIn(ROUTING_ROLE_2, _db_user_roles(email))
+		self.assertIn(self.sse_role, _db_user_roles(email))  # profile role still there
+
+		# Revoke the ad-hoc role → removed; profile role stays
+		self._submit(self._new(request_type="Revoke Role", request_for=email, role=ROUTING_ROLE_2, department=self.dept))
+		self.assertNotIn(ROUTING_ROLE_2, _db_user_roles(email))
+		self.assertIn(self.sse_role, _db_user_roles(email))
+
+		# Revoke the PROFILE-supplied role → refused
+		with self.assertRaises(frappe.ValidationError):
+			self._submit(self._new(request_type="Revoke Role", request_for=email, role=self.sse_role, department=self.dept))
+
+		# User Permission grant + revoke
+		self._submit(self._up_request(email, "User", "Administrator"))
+		self.assertTrue(self._up_exists(email, "User", "Administrator"))
+		self._submit(self._up_request(email, "User", "Administrator", revoke=True))
+		self.assertFalse(self._up_exists(email, "User", "Administrator"))
+
+		# Revoke Role Profile → profile roles removed
+		self._submit(self._new(request_type="Revoke Role Profile", request_for=email, role_profile=SSE_PROFILE, department=self.dept))
+		self.assertNotIn(self.sse_role, _db_user_roles(email))
 
 
 def _ensure_role(role_name):

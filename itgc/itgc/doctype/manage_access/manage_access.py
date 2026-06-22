@@ -286,6 +286,12 @@ class ManageAccess(Document):
 		if self.request_type in (REQUEST_ROLE, REVOKE_ROLE) and not self.role:
 			frappe.throw(_("Please select a Role."))
 
+		# A per-user Revoke Role cannot remove a role the user holds via their Role
+		# Profile — core re-applies every profile role on the next save. Refuse it
+		# rather than let the approval silently no-op. Re-checked on every save.
+		if self.request_type == REVOKE_ROLE:
+			self._guard_revoke_profile_role()
+
 		if self.request_type in (REQUEST_ROLE_PROFILE, REVOKE_ROLE_PROFILE) and not self.role_profile:
 			frappe.throw(_("Please select a Role Profile."))
 
@@ -420,6 +426,39 @@ class ManageAccess(Document):
 			roles |= {r.role for r in (self.profile_roles or []) if r.role}
 		return roles
 
+	def _guard_revoke_profile_role(self):
+		"""Refuse a Revoke Role for a role the target gets from their Role Profile.
+
+		Frappe's `User.populate_role_profile_roles()` resets the roles table to exactly
+		the Role Profile's roles on every User save, and `itgc.overrides.user.ensure_
+		granted_roles` deliberately excludes profile roles from removal. So removing
+		such a role for one user alone cannot stick — the next save re-applies it, and
+		the approved request silently has no effect. Block it and point the admin at the
+		actions that do work: Revoke Role Profile (drop the whole profile from this
+		user) or Modify Role Profile (drop the role for everyone on that profile).
+
+		Re-checked on every save (via validate_request), so it still holds at approval
+		time even if the profile/role state changed after the request was raised.
+		"""
+		if not self.role:
+			return
+		target = self.target_user
+		if not target:
+			return
+		profile = frappe.db.get_value("User", target, "role_profile_name")
+		if not profile:
+			return
+		if self.role in _role_profile_roles(profile):
+			frappe.throw(
+				_(
+					"{0} is granted to {1} by the Role Profile {2}, so revoking it for this "
+					"user alone has no effect — the profile re-applies it on the next save. "
+					"Use 'Revoke Role Profile' to remove the whole profile from this user, or "
+					"'Modify Role Profile' to drop {0} from {2} for everyone assigned it."
+				).format(frappe.bold(self.role), frappe.bold(target), frappe.bold(profile)),
+				title=_("Role comes from a Role Profile"),
+			)
+
 	def _guard_protected_role_lockout(self):
 		"""Block a revoke/disable that would remove the last ACTIVE holder of a
 		protected role (e.g. the last System Manager).
@@ -511,9 +550,20 @@ class ManageAccess(Document):
 
 	def apply_revoke_role_profile(self):
 		user = self.get_target_doc()
-		if user.role_profile_name == self.role_profile:
-			user.role_profile_name = None
-			user.save()
+		if user.role_profile_name != self.role_profile:
+			return
+		# Clearing role_profile_name does NOT remove the roles core materialised from
+		# the profile: User.populate_role_profile_roles() only ADDS roles when a profile
+		# is set, and never strips them on clear. So drop the profile's roles explicitly,
+		# otherwise the access the profile granted survives the revoke (the role profile
+		# link is gone but every role it gave the user remains — a silent half-revoke).
+		# ensure_granted_roles (User validate hook) re-asserts any of these roles that
+		# are still independently granted via an active Manage Access "Request Role".
+		profile_roles = _role_profile_roles(self.role_profile)
+		user.role_profile_name = None
+		if profile_roles:
+			user.set("roles", [r for r in user.get("roles") if r.role not in profile_roles])
+		user.save()
 
 	def apply_disable_user(self):
 		user = self.get_target_doc()

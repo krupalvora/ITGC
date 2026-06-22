@@ -321,6 +321,7 @@ sign-up is blocked (an enabled control is never a silent no-op).
 | **Protected-role request has no approver** | The message asks you to set a **Sudo User** in ITGC Settings. Do so; it auto-gets the `ITGC Access Manager` role and becomes the approver. |
 | **Approver can't see a request** | Confirm they're in the request's **Approvers** table (i.e. an Access Manager of the chosen Department), or that the global Access Manager fallback applied. |
 | **A granted role keeps disappearing** | Frappe's Role Profile sync strips ad-hoc roles on User save; the app re-asserts the `ITGC Access Manager` grant automatically. For other roles, grant them through Manage Access (or include them in a Role Profile). |
+| **"Revoke Role" won't remove a role / role comes back** | The role is supplied by the user's **Role Profile**, so a per-user revoke can't remove it (core re-applies every profile role on save). The request is now refused with this guidance. To actually remove it: **Revoke Role Profile** (drop the whole profile from this user) or **Modify Role Profile** (drop the role from the profile for everyone on it). |
 | **Turning the feature off** | Untick **Enable Manage Access** and Save. The workflow deactivates and the lockdown lifts; existing records stay for audit. |
 
 ---
