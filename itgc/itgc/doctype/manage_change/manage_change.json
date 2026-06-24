@@ -9,6 +9,7 @@
   "approver",
   "column_break_mpne",
   "department",
+  "approved_by",
   "version_control_section",
   "version_control_url",
   "column_break_ubeq",
@@ -40,7 +41,7 @@
   {
    "allow_on_submit": 1,
    "default": "Not Set",
-   "description": "PR which needs to be merged with default branch. Must be set before the change is approved — an approval is bound to this specific PR and the URL is locked once set.",
+   "description": "PR linked to this change. Can be set in Draft or after approval. Locked permanently once a real URL is saved — raise a new Manage Change to gate a different PR.",
    "fieldname": "version_control_url",
    "fieldtype": "Data",
    "in_list_view": 1,
@@ -71,6 +72,15 @@
    "no_copy": 1,
    "options": "Manage Change Department",
    "reqd": 1
+  },
+  {
+   "allow_on_submit": 1,
+   "fieldname": "approved_by",
+   "fieldtype": "Link",
+   "label": "Approved By",
+   "no_copy": 1,
+   "options": "User",
+   "read_only": 1
   },
   {
    "fieldname": "ticket",
@@ -140,7 +150,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-06-07 22:38:01.180749",
+ "modified": "2026-06-24 00:00:00.000000",
  "modified_by": "Administrator",
  "module": "ITGC",
  "name": "Manage Change",

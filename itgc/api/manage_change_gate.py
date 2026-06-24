@@ -164,9 +164,16 @@ def check_pr_approval(pr_url=None, target_branch=None):
 
 		approved_by = approved_by_name = approved_on = None
 		if approved:
-			approver_user, acted_on = _resolve_approver(mc.name)
-			approved_by, approved_by_name = _named(approver_user)
-			approved_on = str(acted_on) if acted_on else None
+			# Primary: explicit field set in before_submit (reliable).
+			# Fallback: workflow action history (may be absent for older records).
+			approver_user = mc_doc.get("approved_by") or None
+			if approver_user:
+				approved_by, approved_by_name = _named(approver_user)
+				approved_on = str(mc_doc.modified) if mc_doc.modified else None
+			else:
+				approver_user, acted_on = _resolve_approver(mc.name)
+				approved_by, approved_by_name = _named(approver_user)
+				approved_on = str(acted_on) if acted_on else None
 
 		return {
 			"approved": approved,
