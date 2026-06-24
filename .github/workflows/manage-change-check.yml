@@ -211,7 +211,7 @@ jobs:
               } else if (reason === 'unknown_branch') {
                 lines.push(`> **Action required:** This gate calls one environment's ERP. Confirm the PR targets a branch that environment gates, and that a **Manage Change VC Branch** named \`${targetBranch}\` exists there. This is a setup issue — ask an admin to verify the GitHub variables/secrets for \`${targetBranch}\`.`);
               } else {
-                lines.push(`> **Action required:** Open your submitted Manage Change record (the one approved by your manager for this change) and set \`version_control_url\` to this PR URL. Make sure \`branch\` is \`${targetBranch}\`. The check polls for ~15 minutes; if you take longer, comment \`/recheck\` to trigger a fresh poll.`);
+                lines.push(`> **Action required:** Link this PR to a Manage Change — set \`version_control_url\` to this PR URL on the Manage Change record (can be done in Draft **before** approval, or on an approved record **after** approval). Make sure \`branch\` is \`${targetBranch}\`. If no Manage Change exists yet, raise one in the ERP. The check polls for ~15 minutes; if you take longer, comment \`/recheck\` to trigger a fresh poll.`);
               }
             }
 
