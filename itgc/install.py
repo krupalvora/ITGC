@@ -34,15 +34,17 @@ MC_APPROVER_CONDITION = "frappe.session.user in [d.user for d in doc.approver]"
 MC_WORKFLOW_STATES = (
 	("Pending", "0", MC_REQUESTER_ROLE),
 	("Approved", "1", None),
-	("Rejected", "0", MC_REQUESTER_ROLE),
+	# Rejection cancels the document (docstatus=2). A rejected MC is a dead
+	# end — the requester must raise a new one. This also allows the same PR
+	# URL to be linked to a fresh MC (cancelled docs are excluded from the
+	# uniqueness check in _lock_version_control_url).
+	("Rejected", "2", None),
 )
 
 # (from_state, action, to_state, allowed_role, allow_self_approval, condition)
 MC_WORKFLOW_TRANSITIONS = (
 	("Pending", "Approve", "Approved", MC_APPROVER_ROLE, 0, MC_APPROVER_CONDITION),
 	("Pending", "Reject", "Rejected", MC_APPROVER_ROLE, 0, MC_APPROVER_CONDITION),
-	# Let the requester re-open a rejected change and send it back for approval.
-	("Rejected", "Resubmit", "Pending", MC_REQUESTER_ROLE, 1, None),
 )
 
 # --- Manage Access governance ----------------------------------------------
