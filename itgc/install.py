@@ -36,8 +36,7 @@ MC_WORKFLOW_STATES = (
 	("Approved", "1", None),
 	# Rejected is a terminal state (docstatus=0, no editing). Resubmit is
 	# intentionally absent — the requester must raise a new MC instead.
-	# allow_edit=None means only System Manager can touch it after rejection.
-	("Rejected", "0", None),
+	("Rejected", "0", "System Manager"),
 )
 
 # (from_state, action, to_state, allowed_role, allow_self_approval, condition)
@@ -322,7 +321,7 @@ def migrate_manage_change_workflow():
 	for s in wf.states:
 		if s.state == "Rejected":
 			s.doc_status = "0"
-			s.allow_edit = None  # lock to System Manager — requester cannot edit
+			s.allow_edit = "System Manager"  # lock — requester cannot edit
 
 	wf.transitions = [
 		t for t in wf.transitions
