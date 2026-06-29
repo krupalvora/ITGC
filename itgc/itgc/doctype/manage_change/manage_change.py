@@ -89,6 +89,7 @@ class ManageChange(Document):
 					"version_control_url": current,
 					"name": ["!=", self.name],
 					"docstatus": ["<", 2],
+					"workflow_state": ["!=", "Rejected"],
 				},
 				"name",
 			)
@@ -133,10 +134,14 @@ class ManageChange(Document):
 		if self._notifications_enabled():
 			self._notify_requester_of_approval()
 
-	def on_cancel(self):
-		# Rejection transitions the workflow to "Rejected" with docstatus=2,
-		# which triggers a cancel (not a save). Notify the requester here.
-		if self.workflow_state == "Rejected" and self._notifications_enabled():
+	def on_update(self):
+		# Rejection keeps docstatus=0, so on_submit never fires. Detect the
+		# workflow transition into "Rejected" here and tell the requester.
+		if (
+			self.workflow_state == "Rejected"
+			and self.has_value_changed("workflow_state")
+			and self._notifications_enabled()
+		):
 			self._notify_requester_of_rejection()
 
 	# --- Notifications -----------------------------------------------------

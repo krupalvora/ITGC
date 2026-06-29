@@ -34,11 +34,10 @@ MC_APPROVER_CONDITION = "frappe.session.user in [d.user for d in doc.approver]"
 MC_WORKFLOW_STATES = (
 	("Pending", "0", MC_REQUESTER_ROLE),
 	("Approved", "1", None),
-	# Rejection cancels the document (docstatus=2). A rejected MC is a dead
-	# end — the requester must raise a new one. This also allows the same PR
-	# URL to be linked to a fresh MC (cancelled docs are excluded from the
-	# uniqueness check in _lock_version_control_url).
-	("Rejected", "2", None),
+	# Rejected is a terminal state (docstatus=0, no editing). Resubmit is
+	# intentionally absent — the requester must raise a new MC instead.
+	# allow_edit=None means only System Manager can touch it after rejection.
+	("Rejected", "0", None),
 )
 
 # (from_state, action, to_state, allowed_role, allow_self_approval, condition)
@@ -306,6 +305,33 @@ def _ensure_workflow_masters(states, actions):
 				{"doctype": "Workflow Action Master", "workflow_action_name": action}
 			).insert(ignore_permissions=True)
 	frappe.db.commit()
+
+
+def migrate_manage_change_workflow():
+	"""Update existing MC workflow: Rejected → docstatus=2, drop Resubmit transition.
+
+	Run once on any site that already had the workflow created with the old rules:
+	    bench --site <site> execute itgc.install.migrate_manage_change_workflow
+	"""
+	if not frappe.db.exists("Workflow", MC_WORKFLOW_NAME):
+		print("Workflow not found — nothing to do.")
+		return
+
+	wf = frappe.get_doc("Workflow", MC_WORKFLOW_NAME)
+
+	for s in wf.states:
+		if s.state == "Rejected":
+			s.doc_status = "0"
+			s.allow_edit = None  # lock to System Manager — requester cannot edit
+
+	wf.transitions = [
+		t for t in wf.transitions
+		if not (t.state == "Rejected" and t.action == "Resubmit")
+	]
+
+	wf.save(ignore_permissions=True)
+	frappe.db.commit()
+	print("Manage Change workflow migrated successfully.")
 
 
 def set_manage_change_workflow_active(is_active):
