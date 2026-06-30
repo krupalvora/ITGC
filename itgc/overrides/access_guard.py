@@ -56,9 +56,16 @@ def _throw(label):
 
 
 def block_doc(doc, method=None):
-	"""Full block for Role / Role Profile / Custom DocPerm (validate + on_trash)."""
-	if _managed():
-		_throw(doc.doctype)
+	"""Block edits/deletes for Role / Role Profile / Custom DocPerm.
+
+	New Role creation is intentionally allowed — admins still create roles directly
+	from the Role form; governance only covers modifications and deletions.
+	"""
+	if not _managed():
+		return
+	if doc.doctype == "Role" and doc.is_new():
+		return
+	_throw(doc.doctype)
 
 
 def capture_user_access_state(doc, method=None):
