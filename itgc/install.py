@@ -62,28 +62,33 @@ MA_WORKFLOW_NAME = "ITGC Manage Access Approval"
 # identity is narrowed by this condition to the users in the `approver` table
 # (the department's Access Managers, or the global Access Manager fallback).
 MA_APPROVER_CONDITION = "frappe.session.user in [d.user for d in doc.approver]"
-# Only the requester may resubmit their own rejected request.
-MA_OWNER_CONDITION = "doc.owner == frappe.session.user"
 
 # (state, doc_status, allow_edit_role)
-# Pending/Rejected are editable by "All" because the requester (who edits to fix
-# and resubmit) holds only the "All" role — Frappe workflow `allow_edit` is
-# role-based and has no owner-only option. This does NOT let approvers tamper with
-# a request: ManageAccess._guard_maker_checker rejects any content change by a
-# non-owner, and the permission hook (itgc.overrides.manage_access_perms) limits an
-# approver to read + the workflow actions. Approved locks down to System Manager.
+# Pending is editable by "All" so the requester (who holds only that role) can fix
+# and resubmit it. Frappe workflow `allow_edit` is role-based and has no
+# owner-only option — this does NOT let approvers tamper with a request:
+# ManageAccess._guard_maker_checker rejects any content change by a non-owner,
+# and the permission hook (itgc.overrides.manage_access_perms) limits an
+# approver to read + the workflow actions.
+#
+# Rejected is a terminal state (docstatus=0 — Frappe has no way to move a draft
+# straight to cancelled/2 without first submitting it, which would be the
+# approver granting the access via on_submit). No transition leads out of it, and
+# it locks to System Manager: the requester cannot edit or reopen a rejected
+# request, and must raise a new one instead. Approved locks down to System
+# Manager too.
 MA_WORKFLOW_STATES = (
 	("Pending", "0", MA_REQUESTER_ROLE),
 	("Approved", "1", None),
-	("Rejected", "0", MA_REQUESTER_ROLE),
+	("Rejected", "0", "System Manager"),
 )
 
 # (from_state, action, to_state, allowed_role, allow_self_approval, condition)
 MA_WORKFLOW_TRANSITIONS = (
 	("Pending", "Approve", "Approved", ACCESS_MANAGER_ROLE, 0, MA_APPROVER_CONDITION),
 	("Pending", "Reject", "Rejected", ACCESS_MANAGER_ROLE, 0, MA_APPROVER_CONDITION),
-	# Let the requester re-open their rejected request and send it back.
-	("Rejected", "Resubmit", "Pending", MA_REQUESTER_ROLE, 1, MA_OWNER_CONDITION),
+	# Rejected is terminal — no Resubmit. The requester cannot reopen a rejected
+	# request and must raise a new one.
 )
 
 # Roles created when the ITGC app is installed.
@@ -378,7 +383,10 @@ def ensure_manage_access_workflow():
 	wf.workflow_name = MA_WORKFLOW_NAME
 	wf.document_type = MANAGE_ACCESS_DOCTYPE
 	wf.workflow_state_field = "workflow_state"
-	wf.override_status = 1
+	# Off: the doc's real docstatus (Draft/Submitted/Cancelled) drives list-view
+	# status, not the workflow state label — so a Rejected request reads as
+	# Cancelled rather than a workflow-only "Rejected" tag.
+	wf.override_status = 0
 	# Disabled on install — only ITGC Settings activates it.
 	wf.is_active = 0
 
@@ -388,8 +396,8 @@ def ensure_manage_access_workflow():
 			{
 				"state": state,
 				"doc_status": doc_status,
-				# A pending/rejected request is editable by its requester (so they
-				# can fix and resubmit); an approved request locks to System Manager.
+				# Pending is editable by its requester (so they can fix and resubmit);
+				# Approved/Rejected lock to System Manager.
 				"allow_edit": allow_edit or "System Manager",
 			},
 		)
@@ -408,6 +416,35 @@ def ensure_manage_access_workflow():
 
 	wf.insert(ignore_permissions=True)
 	frappe.db.commit()
+
+
+def migrate_manage_access_workflow():
+	"""Update an existing MA workflow: lock Rejected, drop Resubmit, override_status=0.
+
+	Run once on any site that already had the workflow created with the old rules
+	(Rejected editable by the requester, a Resubmit transition back to Pending, and
+	override_status=1):
+	    bench --site <site> execute itgc.install.migrate_manage_access_workflow
+	"""
+	if not frappe.db.exists("Workflow", MA_WORKFLOW_NAME):
+		print("Workflow not found — nothing to do.")
+		return
+
+	wf = frappe.get_doc("Workflow", MA_WORKFLOW_NAME)
+	wf.override_status = 0
+
+	for s in wf.states:
+		if s.state == "Rejected":
+			s.allow_edit = "System Manager"  # lock — requester cannot reopen it
+
+	wf.transitions = [
+		t for t in wf.transitions
+		if not (t.state == "Rejected" and t.action == "Resubmit")
+	]
+
+	wf.save(ignore_permissions=True)
+	frappe.db.commit()
+	print("Manage Access workflow migrated successfully.")
 
 
 def set_manage_access_workflow_active(is_active):
